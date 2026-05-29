@@ -1,0 +1,51 @@
+"""
+Hybrid recommendation specialist agent.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+
+from agency_swarm import Agent
+
+from agency.core.agent_tools import generate_recommendations, retrieve_learner_memory
+
+logger = logging.getLogger(__name__)
+
+_INSTRUCTIONS = """You are the RecommendationAgent.
+
+## Steps (always in order)
+1. Call `retrieve_learner_memory` using the learner's intent as query.
+2. Call `generate_recommendations` (limit 6 unless asked otherwise).
+3. Return results as **structured JSON** with:
+   - `recommendations` (title, reasons, difficulty, duration_minutes, topics)
+   - `adaptive_path` (ordered steps with Bloom level when known)
+
+## Personalization
+- Strongly prioritize items matching the learner's `preferred_modalities` when available:
+  `video`, `text`, `interactive`, `game`, `read_aloud`.
+- If preference is weak or unknown, use a balanced modality mix.
+- Lower difficulty when mastery is low; stretch when mastery is high.
+- Respect Bloom progression:
+  - weak topics -> remember/understand/apply first
+  - stronger topics -> apply/analyze/evaluate/create as appropriate
+- Always surface modality in each recommendation.
+
+## Error handling
+- If tools fail, return a JSON error object `{"error": "description"}` — do not fabricate items.
+- Never list resources not present in tool output.
+"""
+
+try:
+    recommendation_agent = Agent(
+        name="RecommendationAgent",
+        description="Produces hybrid personalized learning recommendations.",
+        instructions=_INSTRUCTIONS,
+        tools=[retrieve_learner_memory, generate_recommendations],
+        model=os.getenv("OPENAI_MODEL", "gpt-4o"),
+    )
+    logger.info("RecommendationAgent initialized")
+except Exception:
+    logger.exception("RecommendationAgent initialization failed")
+    raise

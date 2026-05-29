@@ -1,0 +1,125 @@
+{
+  "catalog": [
+    {
+      "id": "content_001",
+      "topic": "Factoring Quadratic Equations",
+      "title": "Introduction to Factoring",
+      "description": "Learn how to factor quadratic expressions with step-by-step examples.",
+      "modality": "video",
+      "bloom_level": "understand",
+      "difficulty": "easy",
+      "duration_minutes": 12,
+      "tags": ["algebra", "quadratics", "factoring"],
+      "prerequisites": []
+    },
+    {
+      "id": "content_002",
+      "topic": "Factoring Quadratic Equations",
+      "title": "Factoring Practice Problems",
+      "description": "Interactive exercises on factoring quadratics.",
+      "modality": "interactive",
+      "bloom_level": "apply",
+      "difficulty": "medium",
+      "duration_minutes": 15,
+      "tags": ["algebra", "practice"],
+      "prerequisites": ["content_001"]
+    },
+    {
+      "id": "content_003",
+      "topic": "Pythagoras Theorem",
+      "title": "Understanding Pythagoras Theorem",
+      "description": "Visual explanation with real-world examples.",
+      "modality": "video",
+      "bloom_level": "understand",
+      "difficulty": "easy",
+      "duration_minutes": 10,
+      "tags": ["geometry", "theorem"],
+      "prerequisites": []
+    },
+    {
+      "id": "content_004",
+      "topic": "Pythagoras Theorem",
+      "title": "Pythagoras Theorem - Word Problems",
+      "description": "Solve real-life application problems.",
+      "modality": "text",
+      "bloom_level": "apply",
+      "difficulty": "medium",
+      "duration_minutes": 18,
+      "tags": ["geometry", "application"],
+      "prerequisites": ["content_003"]
+    },
+    {
+      "id": "content_005",
+      "topic": "Binary Search",
+      "title": "Binary Search Algorithm Explained",
+      "description": "Animated visualization of binary search.",
+      "modality": "video",
+      "bloom_level": "understand",
+      "difficulty": "medium",
+      "duration_minutes": 14,
+      "tags": ["algorithms", "searching"],
+      "prerequisites": []
+    },
+    {
+      "id": "content_006",
+      "topic": "Binary Search",
+      "title": "Implement Binary Search",
+      "description": "Interactive coding challenges for binary search.",
+      "modality": "interactive",
+      "bloom_level": "apply",
+      "difficulty": "hard",
+      "duration_minutes": 25,
+      "tags": ["python", "algorithms"],
+      "prerequisites": ["content_005"]
+    },
+    {
+      "id": "content_007",
+      "topic": "Data Structures",
+      "title": "Introduction to Arrays",
+      "description": "Text-based tutorial with diagrams.",
+      "modality": "text",
+      "bloom_level": "remember",
+      "difficulty": "easy",
+      "duration_minutes": 8,
+      "tags": ["data-structures"],
+      "prerequisites": []
+    },
+    {
+      "id": "content_008",
+      "topic": "Loops and Conditionals",
+      "title": "Mastering For and While Loops",
+      "description": "Game-based learning for loops.",
+      "modality": "game",
+      "bloom_level": "apply",
+      "difficulty": "medium",
+      "duration_minutes": 20,
+      "tags": ["python", "control-flow"],
+      "prerequisites": []
+    },
+    {
+      "id": "content_009",
+      "topic": "Functions",
+      "title": "Writing Reusable Functions",
+      "description": "Read-aloud explanation with examples.",
+      "modality": "read_aloud",
+      "bloom_level": "understand",
+      "difficulty": "easy",
+      "duration_minutes": 11,
+      "tags": ["python"],
+      "prerequisites": []
+    },
+    {
+      "id": "content_010",
+      "topic": "Recursion",
+      "title": "Recursive Thinking - Advanced Problems",
+      "description": "Step-by-step problem solving with recursion.",
+      "modality": "interactive",
+      "bloom_level": "analyze",
+      "difficulty": "hard",
+      "duration_minutes": 30,
+      "tags": ["algorithms", "recursion"],
+      "prerequisites": ["content_008", "content_009"]
+    }
+  ],
+  "last_updated": "2026-05-17"
+}
