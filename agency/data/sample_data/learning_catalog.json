@@ -1,0 +1,62 @@
+[
+  {
+    "id": "alg-linear-eq",
+    "title": "Linear Equations Fundamentals",
+    "topics": ["algebra", "linear_equations"],
+    "difficulty": "beginner",
+    "duration_minutes": 25,
+    "popularity_score": 0.92,
+    "objective": "Solve one-variable linear equations confidently",
+    "prerequisites": []
+  },
+  {
+    "id": "alg-factoring",
+    "title": "Factoring Quadratics",
+    "topics": ["algebra", "factoring", "quadratics"],
+    "difficulty": "intermediate",
+    "duration_minutes": 35,
+    "popularity_score": 0.88,
+    "objective": "Factor quadratic expressions and solve equations",
+    "prerequisites": ["linear_equations"]
+  },
+  {
+    "id": "calc-limits",
+    "title": "Introduction to Limits",
+    "topics": ["calculus", "limits"],
+    "difficulty": "intermediate",
+    "duration_minutes": 40,
+    "popularity_score": 0.81,
+    "objective": "Understand limit notation and basic computations",
+    "prerequisites": ["algebra"]
+  },
+  {
+    "id": "calc-derivatives",
+    "title": "Derivative Rules Practice",
+    "topics": ["calculus", "derivatives"],
+    "difficulty": "advanced",
+    "duration_minutes": 45,
+    "popularity_score": 0.76,
+    "objective": "Apply power, product, and chain rules",
+    "prerequisites": ["limits"]
+  },
+  {
+    "id": "stats-probability",
+    "title": "Probability Basics",
+    "topics": ["statistics", "probability"],
+    "difficulty": "beginner",
+    "duration_minutes": 30,
+    "popularity_score": 0.9,
+    "objective": "Compute basic probabilities and interpret outcomes",
+    "prerequisites": []
+  },
+  {
+    "id": "stats-hypothesis",
+    "title": "Hypothesis Testing Intro",
+    "topics": ["statistics", "hypothesis_testing"],
+    "difficulty": "intermediate",
+    "duration_minutes": 50,
+    "popularity_score": 0.7,
+    "objective": "Formulate and test simple hypotheses",
+    "prerequisites": ["probability"]
+  }
+]

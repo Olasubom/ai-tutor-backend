@@ -1,0 +1,6 @@
+[
+  {"prereq": "linear_equations", "skill": "factoring"},
+  {"prereq": "algebra", "skill": "limits"},
+  {"prereq": "limits", "skill": "derivatives"},
+  {"prereq": "probability", "skill": "hypothesis_testing"}
+]
