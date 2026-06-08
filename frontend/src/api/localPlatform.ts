@@ -1,0 +1,432 @@
+/**
+ * Client-side platform layer for endpoints not yet implemented on FastAPI backend.
+ * Data persists in localStorage until backend auth/admin/course APIs exist.
+ */
+import type {
+  AuthUser,
+  Department,
+  Faculty,
+  NucIdRecord,
+  OnboardingData,
+  Testimonial,
+  TestimonialPanel,
+  UniversityCourse,
+  AccountStatus,
+} from '@/types';
+import { generateId, learnerIdFromUser } from '@/lib/utils';
+
+const KEYS = {
+  users: 'aitutor_users',
+  faculties: 'aitutor_faculties',
+  departments: 'aitutor_departments',
+  courses: 'aitutor_courses',
+  nucIds: 'aitutor_nuc_ids',
+  onboarding: 'aitutor_onboarding',
+  testimonials: 'aitutor_testimonials',
+};
+
+const DEFAULT_TESTIMONIALS: Testimonial[] = [
+  {
+    id: 't_login',
+    panel: 'login',
+    quote: 'AITutor helped me identify exactly where I was struggling before exams.',
+    author: 'Ada Okafor',
+    role: 'Computer Science, 300 Level',
+  },
+  {
+    id: 't_student',
+    panel: 'student_register',
+    quote:
+      'AITutor has completely transformed how I approach complex topics. The structural breakdown of information and the logical flow of the curriculum is exactly what I needed.',
+    author: 'Sarah Chen',
+    role: 'Data Science Fellow',
+  },
+  {
+    id: 't_lecturer',
+    panel: 'lecturer_register',
+    quote:
+      'AITutor gives me a clear view of where each student is struggling, so I can intervene before exams instead of after.',
+    author: 'Dr. Emeka Nwosu',
+    role: 'Senior Lecturer, Computer Science',
+  },
+];
+
+function dedupeFaculties() {
+  const faculties = read<Faculty[]>(KEYS.faculties, []);
+  const seen = new Map<string, Faculty>();
+  for (const f of faculties) {
+    if (!seen.has(f.id)) seen.set(f.id, f);
+  }
+  write(KEYS.faculties, Array.from(seen.values()));
+}
+
+function read<T>(key: string, fallback: T): T {
+  const raw = localStorage.getItem(key);
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function write<T>(key: string, value: T) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function seedIfEmpty() {
+  const faculties = read<Faculty[]>(KEYS.faculties, []);
+  if (faculties.length === 0) {
+    const f1 = { id: 'fac_eng', name: 'Faculty of Engineering' };
+    const f2 = { id: 'fac_sci', name: 'Faculty of Science' };
+    write(KEYS.faculties, [f1, f2]);
+
+    const d1 = { id: 'dept_csc', name: 'Computer Science', faculty_id: f1.id, course_count: 4 };
+    const d2 = { id: 'dept_mat', name: 'Mathematics', faculty_id: f2.id, course_count: 2 };
+    write(KEYS.departments, [d1, d2]);
+
+    write(KEYS.courses, [] as UniversityCourse[]);
+  }
+
+  const nucIds = read<NucIdRecord[]>(KEYS.nucIds, []);
+  if (nucIds.length === 0) {
+    write(KEYS.nucIds, [
+      {
+        id: 'nuc_demo_1',
+        staff_id: 'NUC-2024-001',
+        label: 'Demo Lecturer ID',
+        faculty_id: 'fac_eng',
+        department_id: 'dept_csc',
+        status: 'active',
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'nuc_demo_2',
+        staff_id: 'NUC-2024-002',
+        label: 'Demo Lecturer ID (Science)',
+        faculty_id: 'fac_sci',
+        department_id: 'dept_mat',
+        status: 'active',
+        created_at: new Date().toISOString(),
+      },
+    ]);
+  }
+
+  const testimonials = read<Testimonial[]>(KEYS.testimonials, []);
+  if (testimonials.length === 0) {
+    write(KEYS.testimonials, DEFAULT_TESTIMONIALS);
+  }
+}
+
+function platformInit() {
+  seedIfEmpty();
+  dedupeFaculties();
+}
+
+platformInit();
+
+function fakeJwt(user: AuthUser): string {
+  const payload = {
+    user_id: user.user_id,
+    role: user.role,
+    name: user.name,
+    email: user.email,
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+  };
+  return `aitutor.${btoa(JSON.stringify(payload))}`;
+}
+
+export const localPlatform = {
+  init: platformInit,
+
+  login(email: string, _password: string): { user: AuthUser; token: string } | null {
+    const users = read<AuthUser[]>(KEYS.users, []);
+    const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    if (!user) return null;
+    if (user.status === 'pending_verification') {
+      throw new Error('Your account is pending administrator approval.');
+    }
+    if (user.status === 'suspended' || user.status === 'rejected') {
+      throw new Error('Your account is not active. Contact your administrator.');
+    }
+    return { user, token: fakeJwt(user) };
+  },
+
+  loginWithGoogle(credential: string): { user: AuthUser; token: string } {
+    const payload = JSON.parse(atob(credential.split('.')[1])) as {
+      email?: string;
+      name?: string;
+      sub?: string;
+    };
+    if (!payload.email) {
+      throw new Error('Google account did not return an email address.');
+    }
+
+    const users = read<AuthUser[]>(KEYS.users, []);
+    let user = users.find((u) => u.email.toLowerCase() === payload.email!.toLowerCase());
+
+    if (!user) {
+      user = {
+        user_id: generateId('user'),
+        role: 'student',
+        name: payload.name || payload.email.split('@')[0],
+        email: payload.email,
+        status: 'active',
+        onboarding_complete: false,
+      };
+      user.learner_id = learnerIdFromUser(user.user_id);
+      users.push(user);
+      write(KEYS.users, users);
+    } else if (user.status === 'pending_verification') {
+      throw new Error('Your account is pending administrator approval.');
+    } else if (user.status === 'suspended' || user.status === 'rejected') {
+      throw new Error('Your account is not active. Contact your administrator.');
+    }
+
+    return { user, token: fakeJwt(user) };
+  },
+
+  registerStudent(data: {
+    name: string;
+    email: string;
+    password: string;
+  }): { user: AuthUser; token: string } {
+    const users = read<AuthUser[]>(KEYS.users, []);
+    if (users.some((u) => u.email.toLowerCase() === data.email.toLowerCase())) {
+      throw new Error('An account with this email already exists.');
+    }
+    const user: AuthUser = {
+      user_id: generateId('user'),
+      role: 'student',
+      name: data.name,
+      email: data.email,
+      status: 'active',
+      learner_id: learnerIdFromUser(generateId('user')),
+      onboarding_complete: false,
+    };
+    user.learner_id = learnerIdFromUser(user.user_id);
+    users.push(user);
+    write(KEYS.users, users);
+    return { user, token: fakeJwt(user) };
+  },
+
+  registerLecturer(data: {
+    name: string;
+    email: string;
+    staff_id: string;
+    faculty_id: string;
+    department_id: string;
+    password: string;
+  }): { user: AuthUser } {
+    const nucIds = read<NucIdRecord[]>(KEYS.nucIds, []);
+    const approved = nucIds.find(
+      (n) => n.staff_id.toLowerCase() === data.staff_id.toLowerCase() && n.status === 'active',
+    );
+    if (!approved) {
+      throw new Error('This Staff ID is not recognized. Please contact your department administrator.');
+    }
+    const users = read<AuthUser[]>(KEYS.users, []);
+    if (users.some((u) => u.email.toLowerCase() === data.email.toLowerCase())) {
+      throw new Error('An account with this email already exists.');
+    }
+    const user: AuthUser = {
+      user_id: generateId('user'),
+      role: 'lecturer',
+      name: data.name,
+      email: data.email,
+      staff_id: data.staff_id,
+      faculty_id: data.faculty_id,
+      department_id: data.department_id,
+      status: 'pending_verification' as AccountStatus,
+    };
+    users.push(user);
+    write(KEYS.users, users);
+    return { user };
+  },
+
+  adminLogin(email: string, secret: string): { user: AuthUser; token: string } | null {
+    const adminSecret = import.meta.env.VITE_ADMIN_SECRET || 'admin-secret';
+    if (secret !== adminSecret && email !== 'admin@aitutor.edu') return null;
+    const user: AuthUser = {
+      user_id: 'admin_1',
+      role: 'admin',
+      name: 'Platform Admin',
+      email: email || 'admin@aitutor.edu',
+      status: 'active',
+    };
+    return { user, token: fakeJwt(user) };
+  },
+
+  saveOnboarding(userId: string, data: OnboardingData) {
+    const all = read<Record<string, OnboardingData>>(KEYS.onboarding, {});
+    all[userId] = data;
+    write(KEYS.onboarding, all);
+    const users = read<AuthUser[]>(KEYS.users, []);
+    const idx = users.findIndex((u) => u.user_id === userId);
+    if (idx >= 0) {
+      users[idx] = { ...users[idx], onboarding_complete: true };
+      write(KEYS.users, users);
+    }
+  },
+
+  getOnboarding(userId: string): OnboardingData | null {
+    const all = read<Record<string, OnboardingData>>(KEYS.onboarding, {});
+    return all[userId] ?? null;
+  },
+
+  getFaculties(): Faculty[] {
+    const faculties = read<Faculty[]>(KEYS.faculties, []);
+    const seen = new Set<string>();
+    return faculties.filter((f) => {
+      if (seen.has(f.id)) return false;
+      seen.add(f.id);
+      return true;
+    });
+  },
+
+  getDepartments(): Department[] {
+    const departments = read<Department[]>(KEYS.departments, []);
+    const courses = read<UniversityCourse[]>(KEYS.courses, []);
+    return departments.map((d) => ({
+      ...d,
+      course_count: courses.filter((c) => c.department_id === d.id).length,
+    }));
+  },
+
+  getCourses(departmentId?: string, level?: string): UniversityCourse[] {
+    let courses = read<UniversityCourse[]>(KEYS.courses, []);
+    if (departmentId) courses = courses.filter((c) => c.department_id === departmentId);
+    if (level) courses = courses.filter((c) => c.level === level);
+    return courses;
+  },
+
+  saveDepartment(data: Omit<Department, 'id' | 'course_count'> & { id?: string }) {
+    const departments = read<Department[]>(KEYS.departments, []);
+    if (data.id) {
+      const idx = departments.findIndex((d) => d.id === data.id);
+      if (idx >= 0) departments[idx] = { ...departments[idx], ...data };
+    } else {
+      departments.push({ ...data, id: generateId('dept') });
+    }
+    write(KEYS.departments, departments);
+  },
+
+  deleteDepartment(id: string) {
+    write(
+      KEYS.departments,
+      read<Department[]>(KEYS.departments, []).filter((d) => d.id !== id),
+    );
+    write(
+      KEYS.courses,
+      read<UniversityCourse[]>(KEYS.courses, []).filter((c) => c.department_id !== id),
+    );
+  },
+
+  saveCourse(data: Omit<UniversityCourse, 'id'> & { id?: string }): UniversityCourse {
+    const courses = read<UniversityCourse[]>(KEYS.courses, []);
+    let saved: UniversityCourse;
+    if (data.id) {
+      const idx = courses.findIndex((c) => c.id === data.id);
+      saved = { ...courses[idx], ...data } as UniversityCourse;
+      if (idx >= 0) courses[idx] = saved;
+    } else {
+      saved = { ...data, id: generateId('course') } as UniversityCourse;
+      courses.push(saved);
+    }
+    write(KEYS.courses, courses);
+    return saved;
+  },
+
+  deleteCourse(id: string) {
+    write(KEYS.courses, read<UniversityCourse[]>(KEYS.courses, []).filter((c) => c.id !== id));
+  },
+
+  saveFaculty(name: string, id?: string) {
+    const faculties = read<Faculty[]>(KEYS.faculties, []);
+    if (id) {
+      const idx = faculties.findIndex((f) => f.id === id);
+      if (idx >= 0) faculties[idx].name = name;
+    } else {
+      faculties.push({ id: generateId('fac'), name });
+    }
+    write(KEYS.faculties, faculties);
+  },
+
+  deleteFaculty(id: string) {
+    write(KEYS.faculties, read<Faculty[]>(KEYS.faculties, []).filter((f) => f.id !== id));
+  },
+
+  getNucIds(): NucIdRecord[] {
+    return read<NucIdRecord[]>(KEYS.nucIds, []);
+  },
+
+  saveNucId(data: Omit<NucIdRecord, 'id' | 'created_at' | 'status'> & { id?: string }) {
+    const records = read<NucIdRecord[]>(KEYS.nucIds, []);
+    records.push({
+      ...data,
+      id: data.id || generateId('nuc'),
+      status: 'active',
+      created_at: new Date().toISOString(),
+    });
+    write(KEYS.nucIds, records);
+  },
+
+  revokeNucId(id: string) {
+    const records = read<NucIdRecord[]>(KEYS.nucIds, []);
+    const idx = records.findIndex((r) => r.id === id);
+    if (idx >= 0) records[idx].status = 'revoked';
+    write(KEYS.nucIds, records);
+  },
+
+  deleteNucId(id: string) {
+    write(KEYS.nucIds, read<NucIdRecord[]>(KEYS.nucIds, []).filter((r) => r.id !== id));
+  },
+
+  getStudents(): AuthUser[] {
+    return read<AuthUser[]>(KEYS.users, []).filter((u) => u.role === 'student');
+  },
+
+  getLecturers(): AuthUser[] {
+    return read<AuthUser[]>(KEYS.users, []).filter((u) => u.role === 'lecturer');
+  },
+
+  approveLecturer(userId: string) {
+    const users = read<AuthUser[]>(KEYS.users, []);
+    const idx = users.findIndex((u) => u.user_id === userId);
+    if (idx >= 0) users[idx].status = 'active';
+    write(KEYS.users, users);
+  },
+
+  rejectLecturer(userId: string) {
+    const users = read<AuthUser[]>(KEYS.users, []);
+    const idx = users.findIndex((u) => u.user_id === userId);
+    if (idx >= 0) users[idx].status = 'rejected';
+    write(KEYS.users, users);
+  },
+
+  getTestimonials(): Testimonial[] {
+    return read<Testimonial[]>(KEYS.testimonials, DEFAULT_TESTIMONIALS);
+  },
+
+  getTestimonialForPanel(panel: TestimonialPanel): Testimonial {
+    const all = read<Testimonial[]>(KEYS.testimonials, DEFAULT_TESTIMONIALS);
+    return all.find((t) => t.panel === panel) ?? DEFAULT_TESTIMONIALS.find((t) => t.panel === panel)!;
+  },
+
+  saveTestimonial(data: Omit<Testimonial, 'id'> & { id?: string }) {
+    const all = read<Testimonial[]>(KEYS.testimonials, DEFAULT_TESTIMONIALS);
+    if (data.id) {
+      const idx = all.findIndex((t) => t.id === data.id);
+      if (idx >= 0) {
+        all[idx] = { ...all[idx], ...data, id: data.id };
+      }
+    } else {
+      all.push({ ...data, id: generateId('t') });
+    }
+    write(KEYS.testimonials, all);
+  },
+
+  deleteTestimonial(id: string) {
+    write(KEYS.testimonials, read<Testimonial[]>(KEYS.testimonials, []).filter((t) => t.id !== id));
+  },
+};

@@ -1,0 +1,32 @@
+{"timestamp": "2026-06-08T22:46:45.554955+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-08T22:46:45.561427+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-08T22:46:55.564462+00:00", "event_type": "page_view", "metadata": {"page": "/student/ai-assistant"}}
+{"timestamp": "2026-06-08T22:47:35.771342+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-08T22:47:46.974900+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-08T22:48:24.393286+00:00", "event_type": "page_view", "metadata": {"page": "/student/quiz/Pythagoras%20Theorem%20-%20Word%20Problems"}}
+{"timestamp": "2026-06-08T22:48:34.548464+00:00", "event_type": "quiz_start", "metadata": {"topic": "Pythagoras Theorem - Word Problems", "questions": 5}}
+{"timestamp": "2026-06-08T22:49:04.839755+00:00", "event_type": "quiz_submit", "quiz_id": "08ac640b-3a0d-4ef4-989e-078ade69bfb1", "topic": "Pythagoras Theorem - Word Problems", "score": 2, "total": 5, "percentage": 40.0, "avg_time_per_q": 4.8, "mastery_after": 0.8143719423527729}
+{"timestamp": "2026-06-08T22:49:04.841602+00:00", "event_type": "quiz_submit", "metadata": {"topic": "Pythagoras Theorem - Word Problems", "questions": 5, "score": 2}}
+{"timestamp": "2026-06-08T22:49:13.980277+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-08T22:49:34.361083+00:00", "event_type": "page_view", "metadata": {"page": "/student/ai-assistant"}}
+{"timestamp": "2026-06-08T22:49:43.568624+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-08T22:49:55.700559+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-08T22:49:57.732019+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-08T22:50:27.122043+00:00", "event_type": "page_view", "metadata": {"page": "/student/settings"}}
+{"timestamp": "2026-06-08T22:50:28.955268+00:00", "event_type": "page_view", "metadata": {"page": "/student/help"}}
+{"timestamp": "2026-06-08T22:51:45.537315+00:00", "event_type": "page_view", "metadata": {"page": "/student/notifications"}}
+{"timestamp": "2026-06-08T22:51:47.528063+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-08T22:51:50.888081+00:00", "event_type": "page_view", "metadata": {"page": "/student/notifications"}}
+{"timestamp": "2026-06-08T22:52:05.729141+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-08T22:53:02.214860+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-08T22:53:08.388992+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-08T22:53:18.002540+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-08T22:53:51.679051+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-08T22:54:11.874198+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-08T22:54:52.551769+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-08T22:55:11.437320+00:00", "event_type": "page_view", "metadata": {"page": "/student/ai-assistant"}}
+{"timestamp": "2026-06-08T22:55:29.028644+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-08T22:56:27.753671+00:00", "event_type": "page_view", "metadata": {"page": "/student/ai-assistant"}}
+{"timestamp": "2026-06-08T22:56:29.208358+00:00", "event_type": "page_view", "metadata": {"page": "/student/settings"}}
+{"timestamp": "2026-06-08T23:01:55.306818+00:00", "event_type": "page_view", "metadata": {"page": "/student/settings"}}
+{"timestamp": "2026-06-08T23:01:55.338793+00:00", "event_type": "page_view", "metadata": {"page": "/student/settings"}}

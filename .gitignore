@@ -20,6 +20,11 @@ ai_tutor.db
 agency/data/memory/
 agency/data/vector_store/
 
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+.tools/
+
 # IDE / OS
 .idea/
 .vscode/
