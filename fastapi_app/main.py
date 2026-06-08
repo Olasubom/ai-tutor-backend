@@ -22,6 +22,19 @@ if str(_ROOT) not in sys.path:
 load_dotenv(_ROOT / "agency" / ".env", override=True)
 
 from fastapi_app.routers.tutor_router import router as tutor_router  # noqa: E402
+from fastapi_app.routers.quiz import router as quiz_router  # noqa: E402
+from fastapi_app.routers.notifications import router as notifications_router  # noqa: E402
+from fastapi_app.routers.sessions import router as sessions_router  # noqa: E402
+from fastapi_app.routers.goals import router as goals_router  # noqa: E402
+from fastapi_app.routers.memory_profile import router as memory_profile_router  # noqa: E402
+from fastapi_app.routers.at_risk import router as at_risk_router  # noqa: E402
+from fastapi_app.routers.engagement import router as engagement_router  # noqa: E402
+from fastapi_app.routers.platform_tasks import router as platform_tasks_router  # noqa: E402
+from fastapi_app.routers.onboarding import router as onboarding_router  # noqa: E402
+from fastapi_app.routers.lecturer import router as lecturer_router  # noqa: E402
+from fastapi_app.routers.admin_catalog import router as admin_catalog_router  # noqa: E402
+from fastapi_app.routers.auth_profile import router as auth_profile_router  # noqa: E402
+from fastapi_app.services.memory_files import ensure_memory_dirs  # noqa: E402
 from agency.core.context import get_runtime  # noqa: E402
 from agency.core.tools.database import Database  # noqa: E402
 from agency.core.utils import configure_logging  # noqa: E402
@@ -43,6 +56,23 @@ app.add_middleware(
 )
 
 app.include_router(tutor_router)
+app.include_router(quiz_router)
+app.include_router(notifications_router)
+app.include_router(sessions_router)
+app.include_router(goals_router)
+app.include_router(memory_profile_router)
+app.include_router(at_risk_router)
+app.include_router(engagement_router)
+app.include_router(platform_tasks_router)
+app.include_router(onboarding_router)
+app.include_router(lecturer_router)
+app.include_router(admin_catalog_router)
+app.include_router(auth_profile_router)
+
+
+@app.on_event("startup")
+def startup_memory_dirs() -> None:
+    ensure_memory_dirs()
 
 
 @app.middleware("http")

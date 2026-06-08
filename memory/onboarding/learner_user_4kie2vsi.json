@@ -1,0 +1,30 @@
+{
+  "completed_steps": [
+    1,
+    2,
+    4
+  ],
+  "data": {
+    "step1": {
+      "full_name": "Ola Adebayo",
+      "field_of_study": "computer science",
+      "institution": "fountain university",
+      "proficiency_level": "advanced"
+    },
+    "step2": {
+      "department_id": "dept_csc",
+      "level": "200",
+      "selected_course_ids": [],
+      "additional_subjects": []
+    },
+    "step4": {
+      "weekly_hours": 25,
+      "content_formats": [
+        "video",
+        "interactive",
+        "mixed"
+      ],
+      "primary_objective": "Professional Certification"
+    }
+  }
+}

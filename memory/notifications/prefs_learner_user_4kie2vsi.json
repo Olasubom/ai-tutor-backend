@@ -1,0 +1,7 @@
+{
+  "study_reminders": true,
+  "new_recommendation_alerts": true,
+  "weekly_progress_email": true,
+  "task_due_alerts": true,
+  "mastery_drop_alerts": true
+}

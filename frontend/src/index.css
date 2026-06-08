@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg-page: #ffffff;
+  --color-bg-sidebar: #ffffff;
+  --color-bg-card: #ffffff;
+  --color-bg-card-hover: #f7f8fa;
+  --color-bg-input: #f9fafb;
+  --color-bg-header: #ffffff;
+  --color-border: #e8eaed;
+  --color-border-focus: #0050cb;
+  --color-text-primary: #191b22;
+  --color-text-secondary: #424656;
+  --color-text-muted: #727687;
+  --color-primary: #0050cb;
+  --color-primary-hover: #003fa4;
+  --color-secondary-teal: #006c4f;
+  --color-secondary-teal-container: #60fcc6;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-warning: #894900;
+  --color-warning-container: #ffdcc3;
+}
+
+.dark {
+  --color-bg-page: #0a0e0e;
+  --color-bg-sidebar: #0d1117;
+  --color-bg-card: #111920;
+  --color-bg-card-hover: #16212c;
+  --color-bg-input: #0d1117;
+  --color-bg-header: rgba(13, 17, 23, 0.92);
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-focus: #3b82f6;
+  --color-text-primary: #e8edf3;
+  --color-text-secondary: #8b9ab0;
+  --color-text-muted: #4a5568;
+  --color-primary: #3b82f6;
+  --color-primary-hover: #2563eb;
+  --color-secondary-teal: #00d4aa;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+}
+
+@layer base {
+  html {
+    @apply font-sans antialiased;
+  }
+
+  body {
+    @apply bg-page text-text-primary transition-colors duration-200;
+  }
+}
+
+.page-grid {
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.dark .page-grid {
+  background-color: #0a0e0e;
+  background-image:
+    linear-gradient(rgba(0, 200, 150, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 200, 150, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.label-caps {
+  @apply text-[11px] font-semibold uppercase tracking-wide;
+}
+
+.stat-number {
+  @apply text-[32px] font-extrabold tracking-tight;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.dark .skeleton-shimmer {
+  background: linear-gradient(90deg, #1a2332 25%, #243044 50%, #1a2332 75%);
+  background-size: 200% 100%;
+}

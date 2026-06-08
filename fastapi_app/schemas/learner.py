@@ -14,6 +14,7 @@ class PerformanceEvent(BaseModel):
 class TutorChatRequest(BaseModel):
     learner_id: str = Field(..., description="Stable learner identifier")
     message: str = Field(..., description="Learner's latest message")
+    session_id: Optional[str] = Field(default=None, description="Active chat session id")
     course_context: Optional[Dict[str, Any]] = Field(
         default=None, description="Subject, level, goals, curriculum"
     )
@@ -29,6 +30,7 @@ class TutorChatResponse(BaseModel):
     request_id: str
     learner_id: str
     assistant_message: str
+    session_id: Optional[str] = None
     artifacts: Dict[str, Any] = Field(default_factory=dict)
     timestamp: str
 

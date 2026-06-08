@@ -31,7 +31,10 @@ from fastapi_app.schemas.learner import (
     TutorRecommendRequest,
     TutorRecommendResponse,
 )
+from fastapi_app.schemas.platform import KnowledgePatchRequest, KnowledgeSeedRequest
 from fastapi_app.security import require_api_key, require_dev_token
+from fastapi_app.services import knowledge_service, onboarding_service, sessions_service
+from fastapi_app.services.engagement_service import record_engagement
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,11 @@ def tutor_chat(payload: TutorChatRequest, _: None = Depends(require_api_key)) ->
     """Full multi-agent tutoring chat via CoordinatorAgent."""
     try:
         events = [e.model_dump() for e in payload.events] if payload.events else None
+        session_id = payload.session_id
+        subject = (payload.course_context or {}).get("subject", "General")
+        session = sessions_service.get_or_create_session(
+            payload.learner_id, session_id=session_id, subject=str(subject)
+        )
         result = handle_tutor_request(
             learner_id=payload.learner_id,
             message=payload.message,
@@ -50,10 +58,20 @@ def tutor_chat(payload: TutorChatRequest, _: None = Depends(require_api_key)) ->
             events=events,
             time_budget_minutes=payload.time_budget_minutes,
         )
+        topic = str(subject) if subject != "General" else None
+        sessions_service.touch_session(
+            payload.learner_id,
+            session["session_id"],
+            user_message=payload.message,
+            assistant_message=result["assistant_message"],
+            topic=topic,
+        )
+        record_engagement(payload.learner_id, "chat_message", {"session_id": session["session_id"]})
+        result["session_id"] = session["session_id"]
         return TutorChatResponse(**result)
     except Exception as exc:
         logger.exception("tutor_chat_failed", extra={"learner_id": payload.learner_id})
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail={"detail": str(exc), "code": "chat_error"}) from exc
 
 
 @router.post("/recommend", response_model=TutorRecommendResponse)
@@ -103,10 +121,33 @@ def learner_profile(
     """Debug endpoint to inspect per-learner personalization state."""
     try:
         result = get_learner_profile_snapshot(learner_id)
+        result["profile"] = knowledge_service.enrich_profile(learner_id, result["profile"])
         return LearnerProfileResponse(**result)
     except Exception as exc:
         logger.exception("learner_profile_failed", extra={"learner_id": learner_id})
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail={"detail": str(exc), "code": "profile_error"}) from exc
+
+
+@router.get("/knowledge/{learner_id}")
+def learner_knowledge(learner_id: str, _: None = Depends(require_api_key)):
+    return knowledge_service.get_knowledge(learner_id)
+
+
+@router.get("/knowledge/trajectory/{learner_id}")
+def knowledge_trajectory(learner_id: str, _: None = Depends(require_api_key)):
+    return knowledge_service.mastery_trajectory(learner_id)
+
+
+@router.patch("/knowledge/{learner_id}/{topic}")
+def patch_knowledge(
+    learner_id: str, topic: str, payload: KnowledgePatchRequest, _: None = Depends(require_api_key)
+):
+    return knowledge_service.patch_topic(learner_id, topic, payload.proficiency)
+
+
+@router.post("/knowledge/seed")
+def seed_knowledge(payload: KnowledgeSeedRequest, _: None = Depends(require_api_key)):
+    return onboarding_service.seed_knowledge(payload.learner_id, payload.assessments)
 
 
 @router.get("/db-health")

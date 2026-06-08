@@ -1,0 +1,68 @@
+{
+  "quiz_id": "08ac640b-3a0d-4ef4-989e-078ade69bfb1",
+  "learner_id": "learner_user_vro660ld",
+  "topic": "Pythagoras Theorem - Word Problems",
+  "created_at": "2026-06-08T22:48:34.543928+00:00",
+  "questions": [
+    {
+      "question_id": "q_1",
+      "question_text": "A ladder is leaning against a wall. The foot of the ladder is 3 meters away from the wall, and the ladder reaches a height of 4 meters on the wall. How long is the ladder?",
+      "options": [
+        "5 meters",
+        "6 meters",
+        "7 meters",
+        "8 meters"
+      ],
+      "difficulty": "easy",
+      "correct_option": 0
+    },
+    {
+      "question_id": "q_2",
+      "question_text": "A rectangular park has a length of 10 meters and a width of 24 meters. What is the length of the diagonal path across the park?",
+      "options": [
+        "26 meters",
+        "28 meters",
+        "30 meters",
+        "32 meters"
+      ],
+      "difficulty": "medium",
+      "correct_option": 0
+    },
+    {
+      "question_id": "q_3",
+      "question_text": "A right triangle has one leg measuring 9 meters and the hypotenuse measuring 15 meters. What is the length of the other leg?",
+      "options": [
+        "10 meters",
+        "12 meters",
+        "13 meters",
+        "14 meters"
+      ],
+      "difficulty": "medium",
+      "correct_option": 1
+    },
+    {
+      "question_id": "q_4",
+      "question_text": "A square has a side length of 5 meters. What is the length of the diagonal of the square?",
+      "options": [
+        "5\u221a2 meters",
+        "10 meters",
+        "5 meters",
+        "5\u221a3 meters"
+      ],
+      "difficulty": "easy",
+      "correct_option": 0
+    },
+    {
+      "question_id": "q_5",
+      "question_text": "A kite is flying 20 meters above the ground. The string of the kite is anchored 15 meters away from the point directly below the kite. How long is the string?",
+      "options": [
+        "25 meters",
+        "30 meters",
+        "35 meters",
+        "40 meters"
+      ],
+      "difficulty": "hard",
+      "correct_option": 0
+    }
+  ]
+}

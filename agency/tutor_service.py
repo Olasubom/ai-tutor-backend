@@ -255,6 +255,7 @@ def handle_recommend_request(
             "source_url": r.payload.get("source_url"),
             "score": round(r.score, 3),
             "reasons": r.reasons,
+            "reason": " · ".join(r.reasons) if r.reasons else "Recommended for your learning path",
         }
         for r in ranked
     ]
