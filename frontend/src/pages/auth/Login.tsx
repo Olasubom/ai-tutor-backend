@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -10,6 +10,7 @@ import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { getOnboardingStatus, login } from '@/api/auth';
 import { useAuthStore, getRedirectForRole } from '@/stores/authStore';
 import { useToastStore } from '@/components/ui/Toast';
+import { showSessionExpiredToast } from '@/utils/sessionExpiredToast';
 import axios from 'axios';
 
 const schema = z.object({
@@ -25,14 +26,11 @@ export default function Login() {
   const authLogin = useAuthStore((s) => s.login);
   const setOnboardingComplete = useAuthStore((s) => s.setOnboardingComplete);
   const toast = useToastStore((s) => s.add);
-  const expiredToastShown = useRef(false);
-
   useEffect(() => {
-    if (params.get('expired') && !expiredToastShown.current) {
-      expiredToastShown.current = true;
-      toast('Session expired. Please sign in again.', 'warning');
+    if (params.get('expired')) {
+      showSessionExpiredToast();
     }
-  }, [params, toast]);
+  }, [params]);
 
   const {
     register,

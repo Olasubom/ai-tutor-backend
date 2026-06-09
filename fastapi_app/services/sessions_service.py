@@ -25,17 +25,11 @@ def list_sessions(learner_id: str) -> List[dict]:
 
 def get_or_create_session(learner_id: str, session_id: Optional[str] = None, subject: str = "General") -> dict:
     sessions = list_sessions(learner_id)
-    today = datetime.now(timezone.utc).date().isoformat()
 
     if session_id:
         for s in sessions:
             if s.get("session_id") == session_id:
                 return s
-
-    for s in sessions:
-        started = str(s.get("started_at", ""))[:10]
-        if started == today and not session_id:
-            return s
 
     session = {
         "session_id": session_id or _new_session_id(learner_id),

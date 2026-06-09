@@ -67,8 +67,9 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
   await apiClient.post('/auth/reset-password', { email, code, new_password: newPassword });
 }
 
-export async function loginWithGoogle(_credential: string) {
-  throw new Error('Google sign-in requires backend OAuth configuration.');
+export async function loginWithGoogle(credential: string): Promise<TokenResponse> {
+  const { data } = await apiClient.post<TokenResponse>('/auth/google', { credential });
+  return data;
 }
 
 export async function adminLogin(email: string, password: string): Promise<TokenResponse> {

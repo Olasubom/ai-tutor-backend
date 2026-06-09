@@ -59,7 +59,6 @@ export function Header({ showSession = true, onNewSession }: HeaderProps) {
           <Button
             onClick={() => {
               onNewSession?.();
-              navigate('/student/ai-assistant');
             }}
           >
             New Session

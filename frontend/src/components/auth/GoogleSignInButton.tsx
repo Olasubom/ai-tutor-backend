@@ -1,23 +1,54 @@
 import { GoogleLogin } from '@react-oauth/google';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
-import { loginWithGoogle } from '@/api/auth';
+import { getOnboardingStatus, loginWithGoogle } from '@/api/auth';
+import { useAuthStore, getRedirectForRole } from '@/stores/authStore';
 import { useToastStore } from '@/components/ui/Toast';
+import axios from 'axios';
 
 interface GoogleSignInButtonProps {
-  /** Where new Google students go after first sign-in */
+  /** Where new Google students go after first sign-in when onboarding is incomplete */
   registerRedirect?: string;
 }
 
 const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
-export function GoogleSignInButton({ registerRedirect: _registerRedirect }: GoogleSignInButtonProps) {
+export function GoogleSignInButton({ registerRedirect = '/onboarding/step1' }: GoogleSignInButtonProps) {
+  const navigate = useNavigate();
+  const authLogin = useAuthStore((s) => s.login);
+  const setOnboardingComplete = useAuthStore((s) => s.setOnboardingComplete);
   const toast = useToastStore((s) => s.add);
 
-  const handleCredential = async (_credential: string) => {
+  const handleCredential = async (credential: string) => {
     try {
-      await loginWithGoogle(_credential);
+      const tokenResponse = await loginWithGoogle(credential);
+      authLogin(tokenResponse);
+
+      if (tokenResponse.role === 'student') {
+        try {
+          const status = await getOnboardingStatus();
+          if (status.is_complete) {
+            setOnboardingComplete(tokenResponse.user_id);
+            navigate('/student/dashboard');
+          } else {
+            navigate(registerRedirect);
+          }
+        } catch {
+          navigate(registerRedirect);
+        }
+        return;
+      }
+
+      navigate(getRedirectForRole(tokenResponse.role));
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Google sign-in is not configured on the backend.', 'error');
+      if (axios.isAxiosError(e)) {
+        const detail = e.response?.data?.detail;
+        if (typeof detail === 'string') {
+          toast(detail, 'error');
+          return;
+        }
+      }
+      toast(e instanceof Error ? e.message : 'Google sign-in failed.', 'error');
     }
   };
 

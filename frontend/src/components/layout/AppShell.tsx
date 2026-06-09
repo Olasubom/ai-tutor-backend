@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { recordEngagement } from '@/api/engagement';
+import { getMe } from '@/api/auth';
 import { BookOpen, Bot, HelpCircle, LayoutDashboard, Library, LogOut, Settings } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/stores/authStore';
 
 const nav = [
   { to: '/student/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -16,9 +19,18 @@ const nav = [
 ];
 
 export function AppShell() {
-  const { logout, learnerId } = useAuth();
+  const { logout, learnerId, updateUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const meQ = useQuery({ queryKey: ['auth-me'], queryFn: getMe, enabled: !!learnerId });
+
+  useEffect(() => {
+    const profile = meQ.data;
+    if (!profile?.name) return;
+    const current = useAuthStore.getState().name;
+    if (current !== profile.name) updateUser({ name: profile.name });
+  }, [meQ.data]);
 
   useEffect(() => {
     if (!learnerId) return;
@@ -32,6 +44,7 @@ export function AppShell() {
 
   const handleNewSession = () => {
     sessionStorage.setItem('aitutor_new_session', '1');
+    navigate('/student/ai-assistant', { state: { newSession: true } });
   };
 
   return (

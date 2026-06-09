@@ -11,7 +11,10 @@ router = APIRouter(prefix="/tutor/tasks", tags=["Tasks"])
 
 @router.get("/{learner_id}")
 def list_tasks(learner_id: str, _: None = Depends(require_api_key)):
-    tasks_service.check_due_notifications(learner_id)
+    try:
+        tasks_service.check_due_notifications(learner_id)
+    except Exception:
+        pass  # notification check must not block task listing
     return tasks_service.list_tasks(learner_id)
 
 

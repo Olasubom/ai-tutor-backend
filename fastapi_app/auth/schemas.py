@@ -29,6 +29,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    credential: str = Field(min_length=10)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -49,6 +53,8 @@ class UserProfile(BaseModel):
     institution: Optional[str] = None
     nuc_staff_id: Optional[str] = None
     is_verified: bool = True
+    courses: List[str] = Field(default_factory=list)
+    preferences: dict = Field(default_factory=dict)
 
 
 class ProfilePatch(BaseModel):
@@ -65,6 +71,7 @@ class SubjectRating(BaseModel):
 
 
 class OnboardingCompleteRequest(BaseModel):
+    name: str = ""
     department: str
     college: str
     academic_level: str

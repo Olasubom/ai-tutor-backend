@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -80,6 +81,108 @@ def _extract_final_output(result: Any) -> str:
         except Exception:
             pass
     return str(result)
+
+
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+
+
+def _format_structured_payload(data: Any) -> str:
+    if not isinstance(data, dict):
+        return ""
+
+    parts: List[str] = []
+
+    summary = data.get("knowledge_state_summary")
+    if isinstance(summary, dict):
+        weak = summary.get("weak_topics") or []
+        developing = summary.get("developing_topics") or []
+        mastered = summary.get("mastered_topics") or []
+        if weak or developing or mastered:
+            parts.append("**Your knowledge snapshot**")
+            if weak:
+                parts.append(f"- **Focus areas:** {', '.join(str(t) for t in weak)}")
+            if developing:
+                parts.append(f"- **Developing:** {', '.join(str(t) for t in developing)}")
+            if mastered:
+                parts.append(f"- **Strong topics:** {', '.join(str(t) for t in mastered)}")
+        trend = summary.get("trend")
+        if trend and str(trend).lower() not in {"stable", "unknown"}:
+            parts.append(f"- **Trend:** {trend}")
+
+    notes = data.get("diagnostic_notes") or data.get("notes")
+    if isinstance(notes, str) and notes.strip():
+        parts.append(notes.strip())
+
+    recs = data.get("recommendations")
+    if isinstance(recs, list) and recs:
+        parts.append("**Recommended for you**")
+        for i, rec in enumerate(recs[:6], 1):
+            if not isinstance(rec, dict):
+                continue
+            title = rec.get("title") or rec.get("topic") or "Resource"
+            duration = rec.get("duration_minutes")
+            modality = rec.get("modality") or rec.get("source_type") or ""
+            reasons = rec.get("reasons") or ([rec.get("reason")] if rec.get("reason") else [])
+            meta = [str(modality).replace("_", " ").title()] if modality else []
+            if duration:
+                meta.append(f"{duration} min")
+            line = f"{i}. **{title}**"
+            if meta:
+                line += f" ({', '.join(meta)})"
+            parts.append(line)
+            for reason in reasons[:2]:
+                if reason:
+                    parts.append(f"   - {reason}")
+
+    adaptive = data.get("adaptive_path")
+    if isinstance(adaptive, list) and adaptive:
+        parts.append("**Suggested learning path**")
+        for i, step in enumerate(adaptive[:5], 1):
+            if isinstance(step, dict):
+                title = step.get("title") or step.get("topic") or step.get("step") or f"Step {i}"
+                parts.append(f"{i}. {title}")
+            elif step:
+                parts.append(f"{i}. {step}")
+
+    error = data.get("error")
+    if error:
+        parts.append(f"_{error}_")
+
+    return "\n".join(parts)
+
+
+def humanize_assistant_message(text: str) -> str:
+    """Convert specialist JSON tool output into learner-friendly markdown."""
+    if not text or not text.strip():
+        return text
+
+    stripped = text.strip()
+    blocks = _JSON_FENCE_RE.findall(stripped)
+    if not blocks:
+        try:
+            payload = json.loads(stripped)
+            if isinstance(payload, dict):
+                formatted = _format_structured_payload(payload)
+                return formatted or text
+        except json.JSONDecodeError:
+            return text
+        return text
+
+    prose_parts: List[str] = []
+    remainder = _JSON_FENCE_RE.sub("", stripped).strip()
+    if remainder:
+        prose_parts.append(remainder)
+
+    for block in blocks:
+        try:
+            payload = json.loads(block.strip())
+            formatted = _format_structured_payload(payload)
+            if formatted:
+                prose_parts.append(formatted)
+        except json.JSONDecodeError:
+            continue
+
+    return "\n\n".join(prose_parts).strip() or text
 
 
 _SIMPLE_GREETINGS = {
@@ -233,10 +336,11 @@ def handle_tutor_request(
             context_override=user_context,
             additional_instructions=(
                 f"{routing_hint}\n\nFollow the agency manifesto. "
-                "Return a clear assistant_message and structured artifacts when available."
+                "Return a clear assistant_message in plain, friendly prose for the learner. "
+                "Never output raw JSON or ``` code fences — translate specialist tool results into short paragraphs and numbered lists."
             ),
         )
-        assistant_message = _extract_final_output(result)
+        assistant_message = humanize_assistant_message(_extract_final_output(result))
     except Exception:
         logger.exception("agency_response_failed", extra={"request_id": request_id})
         assistant_message = (
@@ -306,7 +410,8 @@ async def handle_tutor_request_stream(
             context_override=user_context,
             additional_instructions=(
                 f"{routing_hint}\n\nFollow the agency manifesto. "
-                "Return a clear assistant_message and structured artifacts when available."
+                "Return a clear assistant_message in plain, friendly prose for the learner. "
+                "Never output raw JSON or ``` code fences — translate specialist tool results into short paragraphs and numbered lists."
             ),
         )
         async for event in stream:
@@ -326,6 +431,7 @@ async def handle_tutor_request_stream(
             logger.exception("tutor_stream_final_result_failed", extra={"request_id": request_id})
 
         assistant_message = assistant_message or "".join(parts)
+        assistant_message = humanize_assistant_message(assistant_message)
     except Exception:
         logger.exception("tutor_stream_failed", extra={"request_id": request_id})
         assistant_message = (
