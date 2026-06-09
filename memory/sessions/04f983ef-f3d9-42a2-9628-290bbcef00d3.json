@@ -1,0 +1,20 @@
+[
+  {
+    "session_id": "SESS-04F9-VC7C",
+    "subject": "General",
+    "started_at": "2026-06-09T22:00:39.626132+00:00",
+    "ended_at": "2026-06-09T22:28:42.936233+00:00",
+    "message_count": 4,
+    "topics_covered": [],
+    "summary": "Here's your initial curriculum and study plan, focusing on video and interactive content to align with your preferences:"
+  },
+  {
+    "session_id": "SESS-04F9-YGMV",
+    "subject": "General",
+    "started_at": "2026-06-09T22:46:16.961928+00:00",
+    "ended_at": "2026-06-09T22:46:58.220749+00:00",
+    "message_count": 2,
+    "topics_covered": [],
+    "summary": "```json\n{\n    \"knowledge_state_summary\": {\n        \"mastered_topics\": [],\n        \"developing_topics\": [],\n        \"weak"
+  }
+]

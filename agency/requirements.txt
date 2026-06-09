@@ -18,6 +18,7 @@ psycopg2-binary>=2.9.9
 alembic
 passlib[bcrypt]
 python-jose[cryptography]
+google-auth>=2.29.0
 
 # Utilities
 pydantic>=2.7.0

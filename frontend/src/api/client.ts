@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { useToastStore } from '@/components/ui/Toast';
 import { useAuthStore } from '@/stores/authStore';
+import { showSessionExpiredToast } from '@/utils/sessionExpiredToast';
 
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -22,22 +23,15 @@ function getDevToken(): string {
   return fromStorage || fromEnv || 'dev-secret';
 }
 
-/** Paths where a 401 should NOT trigger session-expired redirect */
-function isPublicAuthPath(): boolean {
-  const path = window.location.pathname;
-  return (
-    path === '/' ||
-    path.startsWith('/login') ||
-    path.startsWith('/register') ||
-    path.startsWith('/forgot-password') ||
-    path.startsWith('/admin/login')
-  );
+function isAuthPage(): boolean {
+  const currentPath = window.location.pathname;
+  return currentPath === '/login' || currentPath.startsWith('/register');
 }
 
 let sessionExpiredHandled = false;
 
 export function handleSessionExpired(): void {
-  if (sessionExpiredHandled || isPublicAuthPath()) return;
+  if (sessionExpiredHandled || isAuthPage()) return;
   sessionExpiredHandled = true;
   useAuthStore.getState().logout();
   window.location.href = '/login?expired=1';
@@ -70,12 +64,15 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401) {
       const hadToken = Boolean(useAuthStore.getState().token);
-      const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
+      const isAuthEndpoint =
+        requestUrl.includes('/auth/login') ||
+        requestUrl.includes('/auth/register') ||
+        requestUrl.includes('/auth/google');
 
-      // Clear invalid session without redirecting on public pages or login attempts
       if (hadToken && !isAuthEndpoint) {
         useAuthStore.getState().logout();
-        if (!isPublicAuthPath()) {
+        if (!isAuthPage()) {
+          showSessionExpiredToast();
           handleSessionExpired();
         }
       }

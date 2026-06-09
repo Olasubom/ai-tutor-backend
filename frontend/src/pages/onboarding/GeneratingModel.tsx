@@ -2,16 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
 import { completeOnboarding } from '@/api/auth';
-import { sendChatMessage } from '@/api/chat';
 import { getRecommendations } from '@/api/recommendations';
 import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/Button';
 
-const steps = [
-  'Setting up your profile…',
-  'Generating your curriculum…',
-  'Preparing your resources…',
-];
+const steps = ['Setting up your profile…', 'Preparing your recommendations…'];
 
 export default function GeneratingModel() {
   const navigate = useNavigate();
@@ -34,7 +29,6 @@ export default function GeneratingModel() {
       level?: string;
       institution?: string;
       courses?: string[];
-      courseTitles?: string[];
       knowledgeRatings?: Record<string, string>;
       weeklyHours?: number;
       contentFormats?: string[];
@@ -46,7 +40,10 @@ export default function GeneratingModel() {
       proficiency,
     }));
 
+    const displayName = (onboarding.name ?? name ?? 'Student').trim();
+
     await completeOnboarding({
+      name: displayName,
       department: onboarding.department ?? '',
       college: onboarding.college ?? '',
       academic_level: onboarding.level ?? '200-300',
@@ -59,24 +56,26 @@ export default function GeneratingModel() {
     });
     setDone(1);
 
-    const displayName = onboarding.name ?? name ?? 'Student';
-    const courseTitles = (onboarding.courseTitles ?? []).join(', ') || 'my enrolled courses';
-    const chatMessage = `I am ${displayName}, a ${onboarding.level ?? '200'} student studying ${onboarding.department ?? 'my field'} at ${onboarding.institution ?? 'my institution'}. My enrolled courses are: ${courseTitles}. My weekly study commitment is ${onboarding.weeklyHours ?? 20} hours. I prefer ${(onboarding.contentFormats ?? ['mixed']).join(', ')} content. Please generate my initial curriculum and first 5 study tasks.`;
+    if (displayName) {
+      useAuthStore.setState({ name: displayName });
+      const raw = localStorage.getItem('ai_tutor_user');
+      if (raw) {
+        try {
+          const user = JSON.parse(raw);
+          localStorage.setItem('ai_tutor_user', JSON.stringify({ ...user, name: displayName }));
+        } catch {
+          /* ignore */
+        }
+      }
+    }
 
     const events = subjectRatings.map(({ topic, proficiency }) => ({
       topic,
       correct: proficiency === 'comfortable' || proficiency === 'proficient',
     }));
 
-    await sendChatMessage({
-      learner_id: user_id,
-      message: chatMessage,
-      events,
-    });
+    await getRecommendations({ learner_id: user_id, message: 'initial recommendations', events });
     setDone(2);
-
-    await getRecommendations({ learner_id: user_id, message: 'initial recommendations', events: [] });
-    setDone(3);
 
     useAuthStore.getState().setOnboardingComplete(user_id);
     sessionStorage.removeItem('onboarding_step1');

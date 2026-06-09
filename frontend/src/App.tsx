@@ -55,13 +55,13 @@ export default function App() {
         <Routes>
           <Route element={<PublicRoute />}>
             <Route path="/" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/register/student" element={<StudentRegister />} />
-            <Route path="/register/lecturer" element={<LecturerRegister />} />
-            <Route path="/register/lecturer/pending" element={<LecturerPending />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
           </Route>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/register/student" element={<StudentRegister />} />
+          <Route path="/register/lecturer" element={<LecturerRegister />} />
+          <Route path="/register/lecturer/pending" element={<LecturerPending />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
 
           <Route path="/admin/login" element={<AdminLogin />} />
 

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
-import { Bot, MessageSquare, Paperclip, Plus, Send } from 'lucide-react';
+import { BookOpen, Bot, ChevronRight, MessageSquare, Paperclip, Plus, Send, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -13,8 +13,47 @@ import { getSessions, getSessionMessages } from '@/api/sessions';
 import type { ChatMessage } from '@/types';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
+import { formatAssistantMessage, looksLikeRawJsonStream } from '@/utils/formatAssistantMessage';
 
-function AiMarkdown({ content }: { content: string }) {
+const SUGGESTION_GROUPS = [
+  {
+    id: 'study',
+    icon: Sparkles,
+    label: 'Study Plan',
+    prompts: [
+      'What should I study today based on my weakest topics?',
+      'Build me a focused study session for this week',
+      'Summarize my progress and suggest next steps',
+    ],
+  },
+  {
+    id: 'curriculum',
+    icon: BookOpen,
+    label: 'Curriculum',
+    prompts: [
+      'Generate my initial curriculum and first 5 study tasks',
+      'Recommend resources for my enrolled courses',
+      'Which module should I tackle next?',
+    ],
+  },
+  {
+    id: 'practice',
+    icon: MessageSquare,
+    label: 'Practice',
+    prompts: [
+      'Quiz me on a topic I am struggling with',
+      'Explain a concept step by step with examples',
+      'Help me debug my understanding of a problem',
+    ],
+  },
+];
+
+function AiMarkdown({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+  const display =
+    isStreaming && looksLikeRawJsonStream(content)
+      ? 'Preparing your personalized recommendations…'
+      : formatAssistantMessage(content);
+
   return (
     <ReactMarkdown
       components={{
@@ -36,7 +75,7 @@ function AiMarkdown({ content }: { content: string }) {
         p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
       }}
     >
-      {content}
+      {display}
     </ReactMarkdown>
   );
 }
@@ -44,12 +83,16 @@ function AiMarkdown({ content }: { content: string }) {
 export default function AIAssistant() {
   const { user, learnerId } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const toast = useToastStore((s) => s.add);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
+  const [activeGroup, setActiveGroup] = useState(SUGGESTION_GROUPS[0].id);
+  const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const sessions = useQuery({
@@ -58,48 +101,63 @@ export default function AIAssistant() {
     enabled: !!learnerId,
   });
 
-  const displaySessionId =
-    sessionId ?? (learnerId ? `SESS-${learnerId.slice(0, 8).toUpperCase()}-A` : null);
+  const displaySessionId = sessionId;
+
+  const resetSession = () => {
+    setSessionId(null);
+    setMessages([]);
+    setSuggestionsOpen(true);
+    setInput('');
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isStreaming]);
 
   useEffect(() => {
-    if (sessionStorage.getItem('aitutor_new_session')) {
+    const wantsNew =
+      sessionStorage.getItem('aitutor_new_session') === '1' ||
+      (location.state as { newSession?: boolean } | null)?.newSession;
+    if (wantsNew) {
       sessionStorage.removeItem('aitutor_new_session');
-      setSessionId(null);
-      setMessages([]);
+      resetSession();
+      if ((location.state as { newSession?: boolean } | null)?.newSession) {
+        navigate(location.pathname, { replace: true, state: {} });
+      }
     }
     const params = new URLSearchParams(location.search);
     const topic = params.get('topic');
     if (topic) {
       setInput(`I want to continue studying ${decodeURIComponent(topic)}. Help me with where I left off.`);
     }
-  }, [location.search]);
+  }, [location.pathname, location.search, location.state, navigate]);
 
   const loadSession = async (sid: string) => {
     const rows = await getSessionMessages(learnerId, sid);
     setSessionId(sid);
+    setSuggestionsOpen(false);
     setMessages(
       rows.map((r, i) => ({
         id: `${sid}_${i}`,
         role: r.role as 'user' | 'assistant',
-        content: r.content,
+        content: r.role === 'assistant' ? formatAssistantMessage(r.content) : r.content,
         timestamp: r.timestamp,
       })),
     );
   };
 
   const newSession = () => {
-    setSessionId(null);
-    setMessages([]);
+    resetSession();
   };
 
-  const send = async () => {
-    const text = input.trim();
+  const activeSuggestions = SUGGESTION_GROUPS.find((g) => g.id === activeGroup) ?? SUGGESTION_GROUPS[0];
+  const showSuggestions = messages.length === 0 && !isStreaming && suggestionsOpen;
+
+  const send = async (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
     if (!text || isStreaming) return;
-    setInput('');
+    if (!textOverride) setInput('');
+    setSuggestionsOpen(false);
     const userMsg: ChatMessage = {
       id: `u_${Date.now()}`,
       role: 'user',
@@ -126,13 +184,15 @@ export default function AIAssistant() {
       },
     ]);
     setIsStreaming(true);
+    setStreamingAssistantId(assistantId);
 
     const applyAssistant = (content: string, id?: string, sid?: string) => {
       if (sid) setSessionId(sid);
+      const formatted = formatAssistantMessage(content);
       setMessages((m) =>
         m.map((msg) =>
           msg.id === assistantId
-            ? { ...msg, id: id ?? msg.id, content, timestamp: new Date().toISOString() }
+            ? { ...msg, id: id ?? msg.id, content: formatted, timestamp: new Date().toISOString() }
             : msg,
         ),
       );
@@ -162,6 +222,7 @@ export default function AIAssistant() {
       }
     } finally {
       setIsStreaming(false);
+      setStreamingAssistantId(null);
     }
   };
 
@@ -212,20 +273,28 @@ export default function AIAssistant() {
               </div>
             </div>
           </div>
-          {displaySessionId && (
+          {displaySessionId ? (
             <div className="rounded-full border border-border px-3 py-1 text-[12px] font-mono text-text-muted">
               # {displaySessionId}
+            </div>
+          ) : (
+            <div className="rounded-full border border-dashed border-border px-3 py-1 text-[12px] text-text-muted">
+              New conversation
             </div>
           )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
           {messages.length === 0 && !isStreaming && (
-            <EmptyState
-              icon={MessageSquare}
-              title="Start a conversation"
-              description="Ask the AI Tutor anything about your subjects. Type a question or try: 'What should I study today?'"
-            />
+            <div className="mx-auto flex max-w-2xl flex-col items-center pt-12 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary to-teal text-white">
+                <Bot className="h-6 w-6" />
+              </div>
+              <h2 className="mt-4 text-[20px] font-bold">How can I help you today?</h2>
+              <p className="mt-2 text-[14px] text-text-secondary">
+                Ask anything about your subjects, or pick a suggestion below to get started.
+              </p>
+            </div>
           )}
           {messages.map((msg) => (
             <div key={msg.id} className={`mb-6 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -243,7 +312,11 @@ export default function AIAssistant() {
                       : 'rounded-xl rounded-tl-sm border border-border bg-card px-4 py-3 text-[14px] leading-6'
                   }
                 >
-                  {msg.role === 'assistant' ? <AiMarkdown content={msg.content} /> : msg.content}
+                  {msg.role === 'assistant' ? (
+                    <AiMarkdown content={msg.content} isStreaming={streamingAssistantId === msg.id} />
+                  ) : (
+                    msg.content
+                  )}
                 </div>
               </div>
               {msg.role === 'user' && <Avatar name={user?.name} size="sm" className="ml-3" />}
@@ -253,7 +326,54 @@ export default function AIAssistant() {
         </div>
 
         <div className="sticky bottom-0 border-t border-border bg-header px-6 py-4">
-          <div className="flex items-center gap-2">
+          {showSuggestions && (
+            <div className="mx-auto mb-4 max-w-3xl rounded-2xl border border-border bg-card shadow-card">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <activeSuggestions.icon className="h-4 w-4 text-text-muted" />
+                  <span className="text-[14px] font-semibold">{activeSuggestions.label}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSuggestionsOpen(false)}
+                  className="rounded-lg p-1 text-text-muted hover:bg-card-hover"
+                  aria-label="Dismiss suggestions"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex gap-1 border-b border-border px-2 py-1">
+                {SUGGESTION_GROUPS.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => setActiveGroup(group.id)}
+                    className={cn(
+                      'rounded-lg px-3 py-1.5 text-[12px] font-semibold',
+                      activeGroup === group.id ? 'bg-primary/10 text-primary' : 'text-text-muted hover:bg-card-hover',
+                    )}
+                  >
+                    {group.label}
+                  </button>
+                ))}
+              </div>
+              <ul className="divide-y divide-border">
+                {activeSuggestions.prompts.map((prompt) => (
+                  <li key={prompt}>
+                    <button
+                      type="button"
+                      onClick={() => send(prompt)}
+                      className="flex w-full items-center justify-between px-4 py-3 text-left text-[14px] hover:bg-card-hover"
+                    >
+                      <span>{prompt}</span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mx-auto flex max-w-3xl items-center gap-2">
             <button type="button" className="rounded-lg p-2 text-text-muted hover:bg-card-hover md:hidden" onClick={() => setPanelOpen(!panelOpen)}>
               Sessions
             </button>
@@ -267,7 +387,7 @@ export default function AIAssistant() {
               placeholder="Message AI Tutor..."
               className="flex-1 rounded-xl border border-border bg-input px-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <Button onClick={send} disabled={isStreaming} className="rounded-full px-3">
+            <Button onClick={() => send()} disabled={isStreaming} className="rounded-full px-3">
               <Send className="h-4 w-4" />
             </Button>
           </div>

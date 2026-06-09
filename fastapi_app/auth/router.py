@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,8 +12,10 @@ from fastapi_app.auth import memory as learner_memory
 from fastapi_app.auth.models import User
 from pydantic import BaseModel, EmailStr, Field
 
+from fastapi_app.auth.google_oauth import verify_google_credential
 from fastapi_app.auth.schemas import (
     ForgotPasswordRequest,
+    GoogleAuthRequest,
     LecturerRegister,
     LoginRequest,
     OnboardingCompleteRequest,
@@ -54,6 +57,7 @@ def _token_response(user: User) -> TokenResponse:
 
 
 def _user_profile(user: User) -> UserProfile:
+    mem = learner_memory.get_structured_memory(user.id)
     return UserProfile(
         user_id=user.id,
         email=user.email,
@@ -65,6 +69,8 @@ def _user_profile(user: User) -> UserProfile:
         institution=user.institution,
         nuc_staff_id=user.nuc_staff_id,
         is_verified=user.is_verified,
+        courses=list(mem.get("courses") or []),
+        preferences=dict(mem.get("preferences") or {}),
     )
 
 
@@ -134,6 +140,43 @@ def register_lecturer(payload: LecturerRegister, db: Annotated[Session, Depends(
     }
 
 
+@router.post("/google", response_model=TokenResponse)
+def google_login(payload: GoogleAuthRequest, db: Annotated[Session, Depends(get_db)]) -> TokenResponse:
+    """Sign in or register via Google ID token from the frontend."""
+    idinfo = verify_google_credential(payload.credential)
+    email = str(idinfo["email"]).lower().strip()
+    name = str(idinfo.get("name") or email.split("@")[0]).strip()
+
+    user = db.scalar(select(User).where(User.email == email))
+    if user:
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account disabled.")
+        if user.role == "lecturer" and not user.is_verified:
+            raise HTTPException(
+                status_code=403,
+                detail="Your account is pending verification.",
+            )
+        mem = learner_memory.get_structured_memory(user.id)
+        if not mem.get("onboarding_complete") and name and user.name != name:
+            user.name = name
+            db.commit()
+    else:
+        user = User(
+            email=email,
+            name=name,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            role="student",
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        learner_memory.init_structured_memory(user.id, user.name)
+
+    return _token_response(user)
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> TokenResponse:
     email = payload.email.lower().strip()
@@ -197,6 +240,8 @@ def complete_onboarding(
     user = db.get(User, current["user_id"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if payload.name.strip():
+        user.name = payload.name.strip()
     user.department = payload.department
     user.college = payload.college
     user.academic_level = payload.academic_level
@@ -205,6 +250,7 @@ def complete_onboarding(
     learner_memory.update_structured_memory(
         user.id,
         {
+            "name": user.name,
             "department": payload.department,
             "college": payload.college,
             "academic_level": payload.academic_level,

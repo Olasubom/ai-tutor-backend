@@ -14,6 +14,17 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _parse_due_datetime(due: str) -> Optional[datetime]:
+    """Parse task due_date strings into timezone-aware UTC datetimes."""
+    try:
+        dt = datetime.fromisoformat(str(due).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def list_tasks(learner_id: str) -> List[dict]:
     runtime = get_runtime()
     profile = runtime.learner_memory.get_profile(learner_id)
@@ -90,9 +101,8 @@ def check_due_notifications(learner_id: str) -> int:
         due = t.get("due_date")
         if not due:
             continue
-        try:
-            due_dt = datetime.fromisoformat(str(due).replace("Z", "+00:00"))
-        except ValueError:
+        due_dt = _parse_due_datetime(str(due))
+        if due_dt is None:
             continue
         hours = (due_dt - now).total_seconds() / 3600
         if 0 < hours <= 24:

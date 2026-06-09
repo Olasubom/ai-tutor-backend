@@ -4,7 +4,6 @@ import { patchProfile as patchAuthProfile } from './auth';
 export async function patchProfile(body: {
   learner_id?: string;
   full_name?: string;
-  field_of_study?: string;
   institution?: string;
   department_id?: string;
   academic_level?: string;
@@ -15,8 +14,7 @@ export async function patchProfile(body: {
   const patch: Record<string, string> = {};
   const name = body.full_name ?? body.name;
   if (name) patch.name = name;
-  const department = body.field_of_study ?? body.department;
-  if (department) patch.department = department;
+  if (body.department) patch.department = body.department;
   if (body.institution) patch.institution = body.institution;
   if (body.academic_level) patch.academic_level = body.academic_level;
   if (body.college) patch.college = body.college;

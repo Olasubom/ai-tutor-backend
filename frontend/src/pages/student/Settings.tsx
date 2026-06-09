@@ -12,8 +12,8 @@ import { SubjectPill } from '@/components/onboarding/SubjectPill';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
 import { useToastStore } from '@/components/ui/Toast';
-import { useLearnerProfile } from '@/hooks/useStudent';
 import { patchProfile } from '@/api/profile';
+import { getMe } from '@/api/auth';
 import { onboardingStep2, onboardingStep4 } from '@/api/onboarding';
 import { fetchDepartments } from '@/api/courses';
 import { fetchAdminCourses } from '@/api/adminCourses';
@@ -46,26 +46,20 @@ export default function Settings() {
   const { user, learnerId, updateUser } = useAuth();
   const toast = useToastStore((s) => s.add);
   const qc = useQueryClient();
-  const profileQ = useLearnerProfile(learnerId);
-  const onboarding = profileQ.data?.profile?.onboarding as Record<string, Record<string, unknown>> | undefined;
-  const step1 = onboarding?.step1 ?? {};
-  const step2 = onboarding?.step2 ?? {};
-  const step4 = onboarding?.step4 ?? {};
+  const meQ = useQuery({ queryKey: ['auth-me'], queryFn: getMe, enabled: !!user });
 
-  const [fullName, setFullName] = useState(user?.name ?? '');
-  const [field, setField] = useState(String(step1.field_of_study ?? ''));
-  const [institution, setInstitution] = useState(String(step1.institution ?? ''));
-  const [departmentId, setDepartmentId] = useState(String(step2.department_id ?? ''));
-  const [academicLevel, setAcademicLevel] = useState(String(step1.proficiency_level ?? 'developing'));
-  const [enrolled, setEnrolled] = useState<string[]>(
-    (step2.selected_course_ids as string[] | undefined) ?? [],
-  );
-  const [hours, setHours] = useState(Number(step4.weekly_hours ?? 20));
-  const [formats, setFormats] = useState<string[]>((step4.content_formats as string[]) ?? ['video']);
-  const [objective, setObjective] = useState(String(step4.primary_objective ?? OBJECTIVES[1]));
+  const [fullName, setFullName] = useState('');
+  const [department, setDepartment] = useState('');
+  const [college, setCollege] = useState('');
+  const [institution, setInstitution] = useState('');
+  const [academicLevel, setAcademicLevel] = useState('developing');
+  const [enrolled, setEnrolled] = useState<string[]>([]);
+  const [hours, setHours] = useState(20);
+  const [formats, setFormats] = useState<string[]>(['video']);
+  const [objective, setObjective] = useState(OBJECTIVES[1]);
   const [courseModal, setCourseModal] = useState(false);
-  const [pickerDept, setPickerDept] = useState(departmentId);
-  const [pickerLevel, setPickerLevel] = useState(String(step2.level ?? '200'));
+  const [pickerDept, setPickerDept] = useState('');
+  const [pickerLevel, setPickerLevel] = useState('200');
   const [pickerSelected, setPickerSelected] = useState<string[]>([]);
 
   const departmentsQ = useQuery({ queryKey: ['departments-settings'], queryFn: () => fetchDepartments() });
@@ -88,33 +82,34 @@ export default function Settings() {
   }, [prefsQ.data]);
 
   useEffect(() => {
-    if (!profileQ.data) return;
-    const s1 = onboarding?.step1 ?? {};
-    const s2 = onboarding?.step2 ?? {};
-    const s4 = onboarding?.step4 ?? {};
-    setField(String(s1.field_of_study ?? ''));
-    setInstitution(String(s1.institution ?? ''));
-    setDepartmentId(String(s2.department_id ?? ''));
-    setAcademicLevel(String(s1.proficiency_level ?? 'developing'));
-    setEnrolled((s2.selected_course_ids as string[]) ?? []);
-    setHours(Number(s4.weekly_hours ?? 20));
-    setFormats((s4.content_formats as string[]) ?? ['video']);
-    setObjective(String(s4.primary_objective ?? OBJECTIVES[1]));
-  }, [profileQ.data, onboarding]);
+    const profile = meQ.data;
+    if (!profile) return;
+    setFullName(profile.name ?? '');
+    setDepartment(profile.department ?? '');
+    setCollege(profile.college ?? '');
+    setInstitution(profile.institution ?? '');
+    setAcademicLevel(profile.academic_level ?? 'developing');
+    setEnrolled(profile.courses ?? []);
+    const prefs = profile.preferences ?? {};
+    setHours(Number(prefs.weekly_hours ?? 20));
+    setFormats((prefs.content_formats as string[]) ?? ['video']);
+    setObjective(String(prefs.primary_objective ?? OBJECTIVES[1]));
+    const deptMatch = departments.find((d) => d.name === profile.department);
+    if (deptMatch) setPickerDept(deptMatch.id);
+  }, [meQ.data, departments]);
 
   const saveProfile = async () => {
     try {
-      const dept = departments.find((d) => d.id === departmentId);
       await patchProfile({
         full_name: fullName,
-        field_of_study: field,
+        department,
+        college,
         institution,
-        department: dept?.name ?? field,
         academic_level: academicLevel,
       });
       updateUser({ name: fullName });
       toast('Profile updated', 'success');
-      qc.invalidateQueries({ queryKey: ['profile', learnerId] });
+      qc.invalidateQueries({ queryKey: ['auth-me'] });
     } catch {
       toast('Failed to update profile', 'error');
     }
@@ -125,13 +120,13 @@ export default function Settings() {
     try {
       await onboardingStep2({
         learner_id: learnerId,
-        department_id: pickerDept || departmentId,
+        department_id: pickerDept || departments.find((d) => d.name === department)?.id || '',
         level: pickerLevel,
         selected_course_ids: ids,
         additional_subjects: [],
       });
       toast('Courses updated', 'success');
-      qc.invalidateQueries({ queryKey: ['profile', learnerId] });
+      qc.invalidateQueries({ queryKey: ['auth-me'] });
     } catch {
       toast('Failed to update courses', 'error');
     }
@@ -146,7 +141,7 @@ export default function Settings() {
         primary_objective: objective,
       });
       toast('Preferences saved. AI will update your recommendations.', 'success');
-      qc.invalidateQueries({ queryKey: ['profile', learnerId] });
+      qc.invalidateQueries({ queryKey: ['auth-me'] });
     } catch {
       toast('Failed to save preferences', 'error');
     }
@@ -181,9 +176,9 @@ export default function Settings() {
               <Input label="Email" value={user?.email ?? ''} disabled />
               <p className="mt-1 text-[12px] text-text-muted">Contact support to change</p>
             </div>
-            <Input label="Department" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} />
+            <Input label="Department" value={department} onChange={(e) => setDepartment(e.target.value)} />
             <Input label="Institution" value={institution} onChange={(e) => setInstitution(e.target.value)} />
-            <Input label="Field of Study" value={field} onChange={(e) => setField(e.target.value)} />
+            <Input label="College" value={college} onChange={(e) => setCollege(e.target.value)} />
             <Select
               label="Academic Level"
               value={academicLevel}

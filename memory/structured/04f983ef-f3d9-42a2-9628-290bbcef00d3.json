@@ -1,0 +1,29 @@
+{
+  "learner_id": "04f983ef-f3d9-42a2-9628-290bbcef00d3",
+  "name": "Ola Duke",
+  "topic_mastery": {},
+  "knowledge_state_summary": {
+    "weak_topics": [],
+    "strong_topics": [],
+    "overall_mastery_percentage": 0
+  },
+  "total_study_hours": 0,
+  "modules_completed": 0,
+  "current_streak": 0,
+  "onboarding_complete": true,
+  "courses": [],
+  "subject_ratings": [],
+  "preferences": {
+    "weekly_hours": 20,
+    "content_formats": [
+      "video",
+      "interactive"
+    ],
+    "primary_objective": "Academic Excellence"
+  },
+  "updated_at": "2026-06-09T22:00:39.596797+00:00",
+  "department": "Mathematics",
+  "college": "College of Science",
+  "academic_level": "400",
+  "institution": "Fountain university"
+}
