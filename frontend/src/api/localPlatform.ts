@@ -17,6 +17,8 @@ import { generateId, learnerIdFromUser } from '@/lib/utils';
 
 const KEYS = {
   users: 'aitutor_users',
+  passwords: 'aitutor_passwords',
+  resetCodes: 'aitutor_reset_codes',
   faculties: 'aitutor_faculties',
   departments: 'aitutor_departments',
   courses: 'aitutor_courses',
@@ -24,6 +26,38 @@ const KEYS = {
   onboarding: 'aitutor_onboarding',
   testimonials: 'aitutor_testimonials',
 };
+
+const RESET_CODE_TTL_MS = 10 * 60 * 1000;
+
+interface StoredResetCode {
+  email: string;
+  code: string;
+  expiresAt: number;
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function generateResetCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function getPasswords(): Record<string, string> {
+  return read<Record<string, string>>(KEYS.passwords, {});
+}
+
+function setPasswordForEmail(email: string, password: string) {
+  const passwords = getPasswords();
+  passwords[normalizeEmail(email)] = password;
+  write(KEYS.passwords, passwords);
+}
+
+function verifyPasswordForEmail(email: string, password: string): boolean {
+  const stored = getPasswords()[normalizeEmail(email)];
+  if (!stored) return true;
+  return stored === password;
+}
 
 const DEFAULT_TESTIMONIALS: Testimonial[] = [
   {
@@ -139,10 +173,11 @@ function fakeJwt(user: AuthUser): string {
 export const localPlatform = {
   init: platformInit,
 
-  login(email: string, _password: string): { user: AuthUser; token: string } | null {
+  login(email: string, password: string): { user: AuthUser; token: string } | null {
     const users = read<AuthUser[]>(KEYS.users, []);
     const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (!user) return null;
+    if (!verifyPasswordForEmail(email, password)) return null;
     if (user.status === 'pending_verification') {
       throw new Error('Your account is pending administrator approval.');
     }
@@ -207,6 +242,7 @@ export const localPlatform = {
     user.learner_id = learnerIdFromUser(user.user_id);
     users.push(user);
     write(KEYS.users, users);
+    setPasswordForEmail(data.email, data.password);
     return { user, token: fakeJwt(user) };
   },
 
@@ -220,7 +256,9 @@ export const localPlatform = {
   }): { user: AuthUser } {
     const nucIds = read<NucIdRecord[]>(KEYS.nucIds, []);
     const approved = nucIds.find(
-      (n) => n.staff_id.toLowerCase() === data.staff_id.toLowerCase() && n.status === 'active',
+      (n) =>
+        (n.nuc_staff_id ?? n.staff_id ?? '').toLowerCase() === data.staff_id.toLowerCase() &&
+        n.status === 'active',
     );
     if (!approved) {
       throw new Error('This Staff ID is not recognized. Please contact your department administrator.');
@@ -241,7 +279,52 @@ export const localPlatform = {
     };
     users.push(user);
     write(KEYS.users, users);
+    setPasswordForEmail(data.email, data.password);
     return { user };
+  },
+
+  requestPasswordResetCode(email: string): { message: string; devCode?: string } {
+    const normalized = normalizeEmail(email);
+    const users = read<AuthUser[]>(KEYS.users, []);
+    const user = users.find((u) => u.email.toLowerCase() === normalized);
+    if (!user) {
+      throw new Error('No account found with that email address.');
+    }
+    if (user.role === 'admin') {
+      throw new Error('Admin accounts cannot reset password here. Use the admin secret at /admin/login.');
+    }
+    const code = generateResetCode();
+    const record: StoredResetCode = {
+      email: normalized,
+      code,
+      expiresAt: Date.now() + RESET_CODE_TTL_MS,
+    };
+    write(KEYS.resetCodes, record);
+    // TODO: send `code` via email (SMTP / SendGrid) in production
+    return {
+      message: 'A 6-digit verification code was sent to your email.',
+      devCode: code,
+    };
+  },
+
+  resetPasswordWithCode(email: string, code: string, newPassword: string): void {
+    const normalized = normalizeEmail(email);
+    const record = read<StoredResetCode | null>(KEYS.resetCodes, null);
+    if (!record || record.email !== normalized) {
+      throw new Error('Request a new verification code first.');
+    }
+    if (Date.now() > record.expiresAt) {
+      localStorage.removeItem(KEYS.resetCodes);
+      throw new Error('Verification code expired. Request a new one.');
+    }
+    if (record.code !== code.trim()) {
+      throw new Error('Invalid verification code.');
+    }
+    if (newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters.');
+    }
+    setPasswordForEmail(normalized, newPassword);
+    localStorage.removeItem(KEYS.resetCodes);
   },
 
   adminLogin(email: string, secret: string): { user: AuthUser; token: string } | null {

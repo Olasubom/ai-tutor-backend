@@ -1,23 +1,23 @@
+import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/hooks/useAuth';
-import { fetchDepartments, fetchFaculties } from '@/api/courses';
+import { getMe } from '@/api/auth';
 
 export default function LecturerSettings() {
   const { user } = useAuth();
-  const faculty = fetchFaculties().find((f) => f.id === user?.faculty_id);
-  const department = fetchDepartments().find((d) => d.id === user?.department_id);
+  const { data: profile } = useQuery({ queryKey: ['lecturer-me'], queryFn: getMe, enabled: !!user });
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
       <h1 className="text-[28px] font-extrabold">Profile</h1>
       <Card className="space-y-4 p-6">
         {[
-          ['Name', user?.name],
-          ['Email', user?.email],
-          ['Staff ID', user?.staff_id],
-          ['Faculty', faculty?.name],
-          ['Department', department?.name],
-          ['Status', user?.status === 'active' ? 'Active' : user?.status],
+          ['Name', profile?.name ?? user?.name],
+          ['Email', profile?.email ?? user?.email],
+          ['Staff ID', profile?.nuc_staff_id],
+          ['College', profile?.college],
+          ['Department', profile?.department],
+          ['Status', profile?.is_verified ? 'Active' : 'Pending verification'],
         ].map(([label, value]) => (
           <div key={label} className="flex justify-between border-b border-border pb-3 text-[14px] last:border-0">
             <span className="text-text-muted">{label}</span>

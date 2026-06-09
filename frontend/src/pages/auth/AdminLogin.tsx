@@ -10,7 +10,7 @@ import { useToastStore } from '@/components/ui/Toast';
 
 const schema = z.object({
   email: z.string().email(),
-  secret: z.string().min(1, 'Admin secret is required'),
+  password: z.string().min(1, 'Password is required'),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -27,11 +27,11 @@ export default function AdminLogin() {
 
   const onSubmit = async (data: FormData) => {
     try {
-      const result = await adminLogin(data.email, data.secret);
-      authLogin(result.user, result.token);
+      const tokenResponse = await adminLogin(data.email, data.password);
+      authLogin(tokenResponse);
       navigate('/admin');
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Login failed', 'error');
+      toast(e instanceof Error ? e.message : 'Not authorized.', 'error');
     }
   };
 
@@ -41,17 +41,11 @@ export default function AdminLogin() {
         <h1 className="text-[28px] font-extrabold tracking-tight">Admin sign in</h1>
         <p className="mt-2 text-text-secondary">Platform administration access only.</p>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input label="Admin email" type="email" error={errors.email?.message} {...register('email')} />
-          <Input
-            label="Admin secret"
-            type="password"
-            placeholder="From VITE_ADMIN_SECRET"
-            error={errors.secret?.message}
-            {...register('secret')}
-          />
+          <Input label="Password" type="password" error={errors.password?.message} {...register('password')} />
           <Button type="submit" fullWidth disabled={isSubmitting}>
-            Sign in
+            {isSubmitting ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>
 

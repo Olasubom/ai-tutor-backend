@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { useToastStore } from '@/components/ui/Toast';
+import { useAuthStore } from '@/stores/authStore';
 
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -21,23 +22,31 @@ function getDevToken(): string {
   return fromStorage || fromEnv || 'dev-secret';
 }
 
+/** Paths where a 401 should NOT trigger session-expired redirect */
+function isPublicAuthPath(): boolean {
+  const path = window.location.pathname;
+  return (
+    path === '/' ||
+    path.startsWith('/login') ||
+    path.startsWith('/register') ||
+    path.startsWith('/forgot-password') ||
+    path.startsWith('/admin/login')
+  );
+}
+
+let sessionExpiredHandled = false;
+
+export function handleSessionExpired(): void {
+  if (sessionExpiredHandled || isPublicAuthPath()) return;
+  sessionExpiredHandled = true;
+  useAuthStore.getState().logout();
+  window.location.href = '/login?expired=1';
+}
+
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem('aitutor_auth');
+  const { token } = useAuthStore.getState();
   if (token) {
-    try {
-      const parsed = JSON.parse(token) as { token?: string };
-      if (parsed.token) {
-        const payload = JSON.parse(atob(parsed.token.split('.')[1] ?? '')) as { exp?: number };
-        if (payload.exp && payload.exp * 1000 < Date.now()) {
-          localStorage.removeItem('aitutor_auth');
-          window.location.href = '/login?expired=1';
-          return config;
-        }
-        config.headers.Authorization = `Bearer ${parsed.token}`;
-      }
-    } catch {
-      /* ignore */
-    }
+    config.headers.Authorization = `Bearer ${token}`;
   }
 
   if (config.headers['X-Skip-Api-Key'] !== 'true') {
@@ -57,9 +66,25 @@ apiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError<{ detail?: string | { detail?: string } }>) => {
     const toast = useToastStore.getState().add;
+    const requestUrl = error.config?.url ?? '';
+
     if (error.response?.status === 401) {
-      localStorage.removeItem('aitutor_auth');
-      window.location.href = '/login?expired=1';
+      const hadToken = Boolean(useAuthStore.getState().token);
+      const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
+
+      // Clear invalid session without redirecting on public pages or login attempts
+      if (hadToken && !isAuthEndpoint) {
+        useAuthStore.getState().logout();
+        if (!isPublicAuthPath()) {
+          handleSessionExpired();
+        }
+      }
+      return Promise.reject(error);
+    }
+
+    if (error.response?.status === 403) {
+      const detail = error.response.data?.detail;
+      toast(typeof detail === 'string' ? detail : 'Access denied.', 'warning');
     } else if (error.response?.status === 500) {
       toast('Server error. Please try again.', 'error');
     } else if (!error.response) {

@@ -1,59 +1,98 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
-import { localPlatform } from '@/api/localPlatform';
-import { seedKnowledge } from '@/api/knowledge';
+import { completeOnboarding } from '@/api/auth';
+import { sendChatMessage } from '@/api/chat';
 import { getRecommendations } from '@/api/recommendations';
-import { getLearnerTasks } from '@/api/tasks';
 import { useAuthStore } from '@/stores/authStore';
+import { Button } from '@/components/ui/Button';
 
-const steps = ['Seeding knowledge model', 'Generating curriculum path', 'Preparing your first session'];
-const SEEDED_KEY = 'onboarding_knowledge_seeded';
+const steps = [
+  'Setting up your profile…',
+  'Generating your curriculum…',
+  'Preparing your resources…',
+];
 
 export default function GeneratingModel() {
   const navigate = useNavigate();
   const [done, setDone] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
+
+  const run = async () => {
+    setError(null);
+    const { user_id, name } = useAuthStore.getState();
+    if (!user_id) {
+      setError('Not signed in. Please log in again.');
+      return;
+    }
+
+    const onboarding = JSON.parse(sessionStorage.getItem('onboarding_all') ?? '{}') as {
+      name?: string;
+      department?: string;
+      college?: string;
+      level?: string;
+      institution?: string;
+      courses?: string[];
+      courseTitles?: string[];
+      knowledgeRatings?: Record<string, string>;
+      weeklyHours?: number;
+      contentFormats?: string[];
+      primaryObjective?: string;
+    };
+
+    const subjectRatings = Object.entries(onboarding.knowledgeRatings ?? {}).map(([topic, proficiency]) => ({
+      topic,
+      proficiency,
+    }));
+
+    await completeOnboarding({
+      department: onboarding.department ?? '',
+      college: onboarding.college ?? '',
+      academic_level: onboarding.level ?? '200-300',
+      institution: onboarding.institution ?? '',
+      selected_course_ids: onboarding.courses ?? [],
+      subject_ratings: subjectRatings,
+      weekly_hours: onboarding.weeklyHours ?? 20,
+      content_formats: onboarding.contentFormats ?? [],
+      primary_objective: onboarding.primaryObjective ?? 'Academic Excellence',
+    });
+    setDone(1);
+
+    const displayName = onboarding.name ?? name ?? 'Student';
+    const courseTitles = (onboarding.courseTitles ?? []).join(', ') || 'my enrolled courses';
+    const chatMessage = `I am ${displayName}, a ${onboarding.level ?? '200'} student studying ${onboarding.department ?? 'my field'} at ${onboarding.institution ?? 'my institution'}. My enrolled courses are: ${courseTitles}. My weekly study commitment is ${onboarding.weeklyHours ?? 20} hours. I prefer ${(onboarding.contentFormats ?? ['mixed']).join(', ')} content. Please generate my initial curriculum and first 5 study tasks.`;
+
+    const events = subjectRatings.map(({ topic, proficiency }) => ({
+      topic,
+      correct: proficiency === 'comfortable' || proficiency === 'proficient',
+    }));
+
+    await sendChatMessage({
+      learner_id: user_id,
+      message: chatMessage,
+      events,
+    });
+    setDone(2);
+
+    await getRecommendations({ learner_id: user_id, message: 'initial recommendations', events: [] });
+    setDone(3);
+
+    useAuthStore.getState().setOnboardingComplete(user_id);
+    sessionStorage.removeItem('onboarding_step1');
+    sessionStorage.removeItem('onboarding_step2');
+    sessionStorage.removeItem('onboarding_step3');
+    sessionStorage.removeItem('onboarding_all');
+    navigate('/student/dashboard', { replace: true });
+  };
 
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-
-    const run = async () => {
-      const { user, updateUser } = useAuthStore.getState();
-      const learnerId = user?.learner_id ?? (user ? `learner_${user.user_id}` : '');
-      const onboarding = JSON.parse(sessionStorage.getItem('onboarding_all') ?? '{}');
-
-      if (user) {
-        localPlatform.saveOnboarding(user.user_id, onboarding);
-        updateUser({ onboarding_complete: true });
-
-        const alreadySeeded = sessionStorage.getItem(SEEDED_KEY) === learnerId;
-        if (onboarding.knowledgeRatings && learnerId && !alreadySeeded) {
-          const assessments = Object.entries(onboarding.knowledgeRatings as Record<string, string>).map(
-            ([topic, proficiency]) => ({ topic, proficiency }),
-          );
-          await seedKnowledge(learnerId, assessments);
-          sessionStorage.setItem(SEEDED_KEY, learnerId);
-        }
-        setDone(1);
-
-        if (learnerId) {
-          await getRecommendations({ learner_id: learnerId, message: 'onboarding first recommendations', limit: 6 });
-        }
-        setDone(2);
-
-        if (learnerId) {
-          await getLearnerTasks(learnerId);
-        }
-        setDone(3);
-      }
-
-      navigate('/student/dashboard', { replace: true });
-    };
-
-    run().catch(() => navigate('/student/dashboard', { replace: true }));
-  }, [navigate]);
+    run().catch((e) => {
+      setError(e instanceof Error ? e.message : 'Setup failed. Please try again.');
+    });
+  }, []);
 
   return (
     <div className="page-grid flex min-h-screen flex-col items-center justify-center p-6 text-center">
@@ -71,6 +110,14 @@ export default function GeneratingModel() {
           </li>
         ))}
       </ul>
+      {error && (
+        <div className="mt-8 max-w-md">
+          <p className="text-error">{error}</p>
+          <Button className="mt-4" onClick={() => run()}>
+            Retry
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

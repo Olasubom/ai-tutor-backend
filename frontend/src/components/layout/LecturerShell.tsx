@@ -14,13 +14,13 @@ export function LecturerShell() {
   const lecturerId = user?.user_id ?? '';
 
   useEffect(() => {
-    if (!user || user.role !== 'lecturer' || !user.department_id) return;
+    if (!user || user.role !== 'lecturer') return;
     ensureLecturerProfile(lecturerId, {
       name: user.name,
-      department_id: user.department_id,
-      faculty_id: user.faculty_id,
+      department_id: '',
+      faculty_id: '',
     }).catch(() => {
-      /* backend may be offline; lecturer UI still works from localPlatform */
+      /* backend may be offline */
     });
   }, [lecturerId, user]);
 

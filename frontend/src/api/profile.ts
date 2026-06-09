@@ -1,13 +1,24 @@
-import { apiClient } from './client';
+import { patchProfile as patchAuthProfile } from './auth';
 
+/** @deprecated use patchAuthProfile from auth.ts */
 export async function patchProfile(body: {
-  learner_id: string;
+  learner_id?: string;
   full_name?: string;
   field_of_study?: string;
   institution?: string;
   department_id?: string;
   academic_level?: string;
+  name?: string;
+  department?: string;
+  college?: string;
 }) {
-  const { data } = await apiClient.patch<{ ok: boolean }>('/auth/profile', body);
-  return data;
+  const patch: Record<string, string> = {};
+  const name = body.full_name ?? body.name;
+  if (name) patch.name = name;
+  const department = body.field_of_study ?? body.department;
+  if (department) patch.department = department;
+  if (body.institution) patch.institution = body.institution;
+  if (body.academic_level) patch.academic_level = body.academic_level;
+  if (body.college) patch.college = body.college;
+  return patchAuthProfile(patch);
 }

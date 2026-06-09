@@ -3,9 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { FileText, Gamepad2, Layers, Video } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
-import { onboardingStep4 } from '@/api/onboarding';
-import { useToastStore } from '@/components/ui/Toast';
 
 const FORMATS = [
   { id: 'video', icon: Video, title: 'Video Lectures', desc: 'Visual explanations and demonstrations.' },
@@ -22,48 +19,30 @@ const OBJECTIVES = [
 
 export default function Step4StudyPreferences() {
   const navigate = useNavigate();
-  const { learnerId } = useAuth();
-  const toast = useToastStore((s) => s.add);
   const [hours, setHours] = useState(20);
   const [formats, setFormats] = useState<string[]>(['video', 'interactive']);
   const [objective, setObjective] = useState(OBJECTIVES[1]);
-  const [saving, setSaving] = useState(false);
 
   const toggleFormat = (id: string) => {
     setFormats((prev) => (prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]));
   };
 
-  const finish = async () => {
-    setSaving(true);
-    try {
-      const step1 = JSON.parse(sessionStorage.getItem('onboarding_step1') ?? '{}');
-      const step2 = JSON.parse(sessionStorage.getItem('onboarding_step2') ?? '{}');
-      const step3 = JSON.parse(sessionStorage.getItem('onboarding_step3') ?? '{}');
-      sessionStorage.setItem(
-        'onboarding_all',
-        JSON.stringify({
-          ...step1,
-          ...step2,
-          ...step3,
-          weeklyHours: hours,
-          contentFormats: formats,
-          primaryObjective: objective,
-        }),
-      );
-      if (learnerId) {
-        await onboardingStep4({
-          learner_id: learnerId,
-          weekly_hours: hours,
-          content_formats: formats,
-          primary_objective: objective,
-        });
-      }
-      navigate('/onboarding/generating');
-    } catch {
-      toast('Failed to save preferences.', 'error');
-    } finally {
-      setSaving(false);
-    }
+  const finish = () => {
+    const step1 = JSON.parse(sessionStorage.getItem('onboarding_step1') ?? '{}');
+    const step2 = JSON.parse(sessionStorage.getItem('onboarding_step2') ?? '{}');
+    const step3 = JSON.parse(sessionStorage.getItem('onboarding_step3') ?? '{}');
+    sessionStorage.setItem(
+      'onboarding_all',
+      JSON.stringify({
+        ...step1,
+        ...step2,
+        ...step3,
+        weeklyHours: hours,
+        contentFormats: formats,
+        primaryObjective: objective,
+      }),
+    );
+    navigate('/onboarding/generating');
   };
 
   return (
@@ -143,9 +122,7 @@ export default function Step4StudyPreferences() {
       </div>
 
       <div className="mt-8 flex justify-end">
-        <Button onClick={finish} disabled={saving}>
-          Finish Setup →
-        </Button>
+        <Button onClick={finish}>Finish Setup →</Button>
       </div>
     </>
   );

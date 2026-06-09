@@ -15,9 +15,9 @@ export default function Step3KnowledgeAssessment() {
   const navigate = useNavigate();
   const topics = useMemo(() => {
     const raw = sessionStorage.getItem('onboarding_step2');
-    if (!raw) return [];
-    const data = JSON.parse(raw) as { topics?: string[] };
-    return data.topics ?? [];
+    if (!raw) return [] as string[];
+    const data = JSON.parse(raw) as { courseTitles?: string[]; courses?: string[] };
+    return data.courseTitles ?? data.courses ?? [];
   }, []);
 
   const [ratings, setRatings] = useState<Record<string, string>>(
@@ -28,7 +28,9 @@ export default function Step3KnowledgeAssessment() {
     return (
       <>
         <h2 className="text-[24px] font-extrabold">Knowledge Assessment</h2>
-        <p className="mt-4 text-text-secondary">No courses selected yet. Go back and choose courses, or continue without assessment topics.</p>
+        <p className="mt-4 text-text-secondary">
+          No courses selected yet. Go back and choose courses, or continue without assessment topics.
+        </p>
         <div className="mt-8 flex justify-end">
           <Button onClick={() => navigate('/onboarding/step4')}>Skip to Preferences →</Button>
         </div>
@@ -61,9 +63,7 @@ export default function Step3KnowledgeAssessment() {
                       onClick={() => setRatings((prev) => ({ ...prev, [topic]: r.id }))}
                       className={cn(
                         'rounded-full border px-3 py-1.5 text-[12px] font-semibold',
-                        ratings[topic] === r.id
-                          ? 'border-primary text-primary'
-                          : 'border-border text-text-muted',
+                        ratings[topic] === r.id ? 'border-primary text-primary' : 'border-border text-text-muted',
                       )}
                     >
                       {r.label}

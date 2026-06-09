@@ -1,0 +1,13 @@
+{
+  "completed_steps": [
+    1
+  ],
+  "data": {
+    "step1": {
+      "full_name": "adebayp mubarak",
+      "field_of_study": "computer science",
+      "institution": "fountain university",
+      "proficiency_level": "advanced"
+    }
+  }
+}

@@ -2,12 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
-import { Select } from '@/components/ui/Select';
 import { SubjectPill } from '@/components/onboarding/SubjectPill';
-import { fetchDepartments } from '@/api/courses';
 import { fetchAdminCourses } from '@/api/adminCourses';
-import { onboardingStep2 } from '@/api/onboarding';
-import { useAuth } from '@/hooks/useAuth';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 
@@ -15,13 +11,21 @@ const LEVELS = ['100', '200', '300', '400', '500'];
 
 export default function Step2CurriculumFocus() {
   const navigate = useNavigate();
-  const { learnerId } = useAuth();
   const toast = useToastStore((s) => s.add);
-  const departments = useMemo(() => fetchDepartments(), []);
-  const [departmentId, setDepartmentId] = useState(departments[0]?.id ?? '');
+  const step1 = useMemo(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('onboarding_step1') ?? '{}') as {
+        departmentId?: string;
+        department?: string;
+      };
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const departmentId = step1.departmentId ?? '';
   const [level, setLevel] = useState('200');
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
   const [showNoCourseWarning, setShowNoCourseWarning] = useState(false);
 
   const { data: courses = [], isLoading } = useQuery({
@@ -30,39 +34,32 @@ export default function Step2CurriculumFocus() {
     enabled: !!departmentId && !!level,
   });
 
-  const toggleCourse = (code: string) => {
-    setSelectedCourses((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
-    );
+  const toggleCourse = (id: string) => {
+    setSelectedCourses((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
   };
 
-  const selectAll = () => setSelectedCourses(courses.map((c) => c.course_code));
+  const selectAll = () => setSelectedCourses(courses.map((c) => c.id));
 
-  const persistAndNavigate = async () => {
-    setSaving(true);
-    try {
-      sessionStorage.setItem(
-        'onboarding_step2',
-        JSON.stringify({ departmentId, level, courses: selectedCourses, topics: selectedCourses }),
-      );
-      if (learnerId) {
-        await onboardingStep2({
-          learner_id: learnerId,
-          department_id: departmentId,
-          level,
-          selected_course_ids: selectedCourses,
-          additional_subjects: [],
-        });
-      }
-      navigate('/onboarding/step3');
-    } catch {
-      toast('Failed to save curriculum focus.', 'error');
-    } finally {
-      setSaving(false);
-    }
+  const persistAndNavigate = () => {
+    sessionStorage.setItem(
+      'onboarding_step2',
+      JSON.stringify({
+        departmentId,
+        department: step1.department,
+        level,
+        courses: selectedCourses,
+        courseTitles: courses.filter((c) => selectedCourses.includes(c.id)).map((c) => c.course_title),
+      }),
+    );
+    navigate('/onboarding/step3');
   };
 
   const continueNext = () => {
+    if (!departmentId) {
+      toast('Complete step 1 first — select your department.', 'warning');
+      navigate('/onboarding/step1');
+      return;
+    }
     if (courses.length > 0 && selectedCourses.length === 0) return;
     if (courses.length === 0 || selectedCourses.length === 0) {
       setShowNoCourseWarning(true);
@@ -76,22 +73,11 @@ export default function Step2CurriculumFocus() {
   return (
     <>
       <h2 className="text-[24px] font-extrabold">Curriculum Focus</h2>
-      <p className="mt-2 text-text-secondary">Select the subjects you&apos;d like to prioritize.</p>
+      <p className="mt-2 text-text-secondary">
+        Department: <strong>{step1.department || '—'}</strong>. Select courses for your level.
+      </p>
 
       <div className="mt-6 space-y-5">
-        <div>
-          <span className="label-caps text-text-muted">Select your department</span>
-          <Select
-            className="mt-2"
-            value={departmentId}
-            onChange={(e) => {
-              setDepartmentId(e.target.value);
-              setSelectedCourses([]);
-            }}
-            options={departments.map((d) => ({ value: d.id, label: d.name }))}
-          />
-        </div>
-
         <div>
           <span className="label-caps text-text-muted">Select your level</span>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -129,15 +115,15 @@ export default function Step2CurriculumFocus() {
             ) : courses.length === 0 ? (
               <p className="text-[14px] text-text-secondary">
                 No courses have been added for this department and level yet. Please check back later or contact your
-                department administrator.
+                college administrator.
               </p>
             ) : (
               courses.map((c) => (
                 <SubjectPill
                   key={c.id}
                   label={`${c.course_code} · ${c.course_title}`}
-                  selected={selectedCourses.includes(c.course_code)}
-                  onClick={() => toggleCourse(c.course_code)}
+                  selected={selectedCourses.includes(c.id)}
+                  onClick={() => toggleCourse(c.id)}
                 />
               ))
             )}
@@ -150,14 +136,14 @@ export default function Step2CurriculumFocus() {
           <p className="text-[14px] text-text-secondary">
             You have not selected any courses. You can add them later from Settings.
           </p>
-          <Button className="mt-3" onClick={persistAndNavigate} disabled={saving}>
+          <Button className="mt-3" onClick={persistAndNavigate}>
             Continue Anyway
           </Button>
         </div>
       )}
 
       <div className="mt-8 flex justify-end">
-        <Button onClick={continueNext} disabled={saving || !canContinue}>
+        <Button onClick={continueNext} disabled={!canContinue}>
           Continue →
         </Button>
       </div>
