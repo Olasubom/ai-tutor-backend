@@ -12,6 +12,7 @@ import StudentRegister from '@/pages/auth/StudentRegister';
 import LecturerRegister from '@/pages/auth/LecturerRegister';
 import LecturerPending from '@/pages/auth/LecturerPending';
 import AdminLogin from '@/pages/auth/AdminLogin';
+import ForgotPassword from '@/pages/auth/ForgotPassword';
 import OnboardingShell from '@/pages/onboarding/OnboardingShell';
 import Step1Profile from '@/pages/onboarding/Step1Profile';
 import Step2CurriculumFocus from '@/pages/onboarding/Step2CurriculumFocus';
@@ -40,9 +41,9 @@ const queryClient = new QueryClient({
 });
 
 function NotFound() {
-  const { isAuthenticated, user } = useAuthStore();
-  if (isAuthenticated && user) {
-    return <Navigate to={getRedirectForRole(user.role)} replace />;
+  const { isAuthenticated, role } = useAuthStore();
+  if (isAuthenticated && role) {
+    return <Navigate to={getRedirectForRole(role)} replace />;
   }
   return <Navigate to="/" replace />;
 }
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/register/student" element={<StudentRegister />} />
             <Route path="/register/lecturer" element={<LecturerRegister />} />
             <Route path="/register/lecturer/pending" element={<LecturerPending />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
           </Route>
 
           <Route path="/admin/login" element={<AdminLogin />} />

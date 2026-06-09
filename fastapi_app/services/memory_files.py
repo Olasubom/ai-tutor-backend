@@ -23,6 +23,8 @@ MEMORY_DIRS = [
     "engagement",
     "rosters",
     "courses",
+    "auth",
+    "structured",
 ]
 
 

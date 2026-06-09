@@ -15,6 +15,9 @@ faiss-cpu>=1.8.0
 # Database
 SQLAlchemy>=2.0.30
 psycopg2-binary>=2.9.9
+alembic
+passlib[bcrypt]
+python-jose[cryptography]
 
 # Utilities
 pydantic>=2.7.0

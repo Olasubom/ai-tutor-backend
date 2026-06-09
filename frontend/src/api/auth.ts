@@ -1,45 +1,80 @@
-import { localPlatform } from './localPlatform';
-import type { AuthUser } from '@/types';
+import { apiClient } from './client';
+import type { TokenResponse } from '@/stores/authStore';
 
-export async function login(email: string, password: string) {
-  const result = localPlatform.login(email, password);
-  if (!result) throw new Error('Invalid email or password.');
-  return result;
+export async function login(email: string, password: string): Promise<TokenResponse> {
+  const { data } = await apiClient.post<TokenResponse>('/auth/login', { email, password });
+  return data;
 }
 
-export async function loginWithGoogle(credential: string) {
-  return localPlatform.loginWithGoogle(credential);
-}
-
-export async function registerStudent(data: { name: string; email: string; password: string }) {
-  return localPlatform.registerStudent(data);
-}
-
-export async function registerLecturer(data: {
-  name: string;
+export async function registerStudent(body: {
   email: string;
-  staff_id: string;
-  faculty_id: string;
-  department_id: string;
+  name: string;
   password: string;
-}) {
-  return localPlatform.registerLecturer(data);
+  department?: string;
+  college?: string;
+  academic_level?: string;
+  institution?: string;
+}): Promise<TokenResponse> {
+  const { data } = await apiClient.post<TokenResponse>('/auth/register/student', body);
+  return data;
 }
 
-export async function adminLogin(email: string, secret: string) {
-  const result = localPlatform.adminLogin(email, secret);
-  if (!result) throw new Error('Invalid admin credentials.');
-  return result;
+export async function registerLecturer(body: {
+  email: string;
+  name: string;
+  password: string;
+  nuc_staff_id: string;
+  college: string;
+  department: string;
+}): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>('/auth/register/lecturer', body, {
+    validateStatus: (s) => s === 202 || s < 300,
+  });
+  return data;
 }
 
-export async function refreshToken(): Promise<{ token: string; user: AuthUser } | null> {
-  const raw = localStorage.getItem('aitutor_auth');
-  if (!raw) return null;
-  try {
-    const { user } = JSON.parse(raw) as { token: string; user: AuthUser };
-    const token = `aitutor.${btoa(JSON.stringify({ ...user, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 }))}`;
-    return { token, user };
-  } catch {
-    return null;
+export async function getMe() {
+  const { data } = await apiClient.get('/auth/me');
+  return data;
+}
+
+export async function patchProfile(body: Record<string, string>) {
+  const { data } = await apiClient.patch('/auth/profile', body);
+  return data;
+}
+
+export async function getOnboardingStatus() {
+  const { data } = await apiClient.get<{ is_complete: boolean; missing_steps: string[] }>(
+    '/auth/onboarding/status',
+  );
+  return data;
+}
+
+export async function completeOnboarding(body: Record<string, unknown>) {
+  const { data } = await apiClient.post('/auth/onboarding/complete', body);
+  return data;
+}
+
+export async function requestPasswordResetCode(email: string) {
+  const { data } = await apiClient.post<{ message: string; dev_code?: string; email_sent?: boolean }>(
+    '/auth/forgot-password',
+    { email },
+  );
+  return { message: data.message, devCode: data.dev_code, emailSent: data.email_sent ?? false };
+}
+
+export async function resetPasswordWithCode(email: string, code: string, newPassword: string) {
+  await apiClient.post('/auth/reset-password', { email, code, new_password: newPassword });
+}
+
+export async function loginWithGoogle(_credential: string) {
+  throw new Error('Google sign-in requires backend OAuth configuration.');
+}
+
+export async function adminLogin(email: string, password: string): Promise<TokenResponse> {
+  const data = await login(email, password);
+  if (data.role !== 'admin') {
+    throw new Error('Not authorized. Admin role required.');
   }
+  return data;
 }

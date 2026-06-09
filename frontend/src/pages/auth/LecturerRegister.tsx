@@ -3,22 +3,23 @@ import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { AuthSidePanel } from '@/components/auth/AuthSidePanel';
 import { registerLecturer } from '@/api/auth';
-import { fetchDepartments, fetchFaculties } from '@/api/courses';
+import { fetchColleges, fetchDepartments } from '@/api/courses';
 import { useToastStore } from '@/components/ui/Toast';
+import axios from 'axios';
 
 const schema = z
   .object({
     name: z.string().min(2, 'Name is required'),
     email: z.string().email(),
-    staff_id: z.string().min(3, 'Staff ID is required'),
-    faculty_id: z.string().min(1, 'Select a faculty'),
-    department_id: z.string().min(1, 'Select a department'),
+    nuc_staff_id: z.string().min(3, 'Staff ID is required'),
+    college: z.string().min(1, 'Select a college'),
+    department: z.string().min(1, 'Select a department'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirm: z.string(),
   })
@@ -27,43 +28,84 @@ const schema = z
 type FormData = z.infer<typeof schema>;
 
 export default function LecturerRegister() {
-  const navigate = useNavigate();
   const toast = useToastStore((s) => s.add);
-  const { data: faculties = [] } = useQuery({ queryKey: ['faculties'], queryFn: fetchFaculties });
-  const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: fetchDepartments });
-  const [facultyId, setFacultyId] = useState('');
-  const activeFacultyId = facultyId || faculties[0]?.id || '';
+  const [collegeId, setCollegeId] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [nucError, setNucError] = useState('');
 
-  const filteredDepartments = departments.filter((d) => d.faculty_id === activeFacultyId);
+  const { data: colleges = [] } = useQuery({ queryKey: ['colleges'], queryFn: fetchColleges });
+  const activeCollegeId = collegeId || colleges[0]?.id || '';
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments', activeCollegeId],
+    queryFn: () => fetchDepartments(activeCollegeId),
+    enabled: !!activeCollegeId,
+  });
+
+  const filteredDepartments = departments.filter(
+    (d) => d.college_id === activeCollegeId || d.faculty_id === activeCollegeId,
+  );
 
   const {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      faculty_id: faculties[0]?.id ?? '',
-      department_id: filteredDepartments[0]?.id ?? '',
+      college: colleges[0]?.id ?? '',
+      department: filteredDepartments[0]?.id ?? '',
     },
   });
 
+  const selectedCollegeId = watch('college') || activeCollegeId;
+  const selectedCollege = colleges.find((c) => c.id === selectedCollegeId);
+
   const onSubmit = async (data: FormData) => {
+    setNucError('');
     try {
+      const dept = filteredDepartments.find((d) => d.id === data.department);
       await registerLecturer({
         name: data.name,
         email: data.email,
-        staff_id: data.staff_id,
-        faculty_id: data.faculty_id,
-        department_id: data.department_id,
         password: data.password,
+        nuc_staff_id: data.nuc_staff_id,
+        college: selectedCollege?.name ?? '',
+        department: dept?.name ?? '',
       });
-      navigate('/register/lecturer/pending', { state: { email: data.email } });
+      setSubmitted(true);
     } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 400) {
+        const detail = e.response.data?.detail;
+        if (typeof detail === 'string' && detail.toLowerCase().includes('staff id')) {
+          setNucError(detail);
+          return;
+        }
+      }
       toast(e instanceof Error ? e.message : 'Registration failed', 'error');
     }
   };
+
+  if (submitted) {
+    return (
+      <div className="grid min-h-screen lg:grid-cols-2">
+        <div className="flex items-center justify-center px-6 py-12">
+          <div className="w-full max-w-md text-center">
+            <h1 className="text-[28px] font-extrabold">Request submitted</h1>
+            <p className="mt-4 text-text-secondary">
+              Account request submitted. An administrator will review and approve your account. You will be able to log
+              in once approved.
+            </p>
+            <Link to="/login" className="mt-8 inline-block font-semibold text-primary">
+              Return to Sign In
+            </Link>
+          </div>
+        </div>
+        <AuthSidePanel panel="lecturer_register" />
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
@@ -77,52 +119,49 @@ export default function LecturerRegister() {
           <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-4">
             <Input label="Full Name" error={errors.name?.message} {...register('name')} />
             <Input label="Email address" type="email" error={errors.email?.message} {...register('email')} />
-            <Input
-              label="Staff ID (NUC)"
-              placeholder="e.g. NUC-2024-001"
-              error={errors.staff_id?.message}
-              {...register('staff_id')}
-            />
-            <p className="-mt-2 text-[12px] text-text-muted">
-              Your ID must be pre-approved by your department administrator.
-            </p>
+            <div>
+              <Input
+                label="NUC / Staff ID"
+                placeholder="e.g. NUC-2024-001"
+                error={nucError || errors.nuc_staff_id?.message}
+                {...register('nuc_staff_id')}
+              />
+              <p className="mt-1 text-[12px] text-text-muted">
+                Your NUC-issued staff identification number. Required for account verification.
+              </p>
+            </div>
 
             <Select
-              label="Faculty"
-              error={errors.faculty_id?.message}
-              options={faculties.map((f) => ({ value: f.id, label: f.name }))}
-              {...register('faculty_id', {
+              label="College"
+              error={errors.college?.message}
+              options={colleges.map((c) => ({ value: c.id, label: c.name }))}
+              {...register('college', {
                 onChange: (e) => {
                   const id = e.target.value;
-                  setFacultyId(id);
-                  setValue('faculty_id', id);
-                  const firstDept = departments.find((d) => d.faculty_id === id);
-                  setValue('department_id', firstDept?.id ?? '');
+                  setCollegeId(id);
+                  setValue('college', id);
+                  const firstDept = departments.find((d) => d.college_id === id || d.faculty_id === id);
+                  setValue('department', firstDept?.id ?? '');
                 },
               })}
             />
 
             <Select
               label="Department"
-              error={errors.department_id?.message}
+              error={errors.department?.message}
               options={
                 filteredDepartments.length
                   ? filteredDepartments.map((d) => ({ value: d.id, label: d.name }))
-                  : [{ value: '', label: 'No departments in this faculty' }]
+                  : [{ value: '', label: 'No departments in this college' }]
               }
-              {...register('department_id')}
+              {...register('department')}
             />
 
             <Input label="Password" type="password" error={errors.password?.message} {...register('password')} />
-            <Input
-              label="Confirm Password"
-              type="password"
-              error={errors.confirm?.message}
-              {...register('confirm')}
-            />
+            <Input label="Confirm Password" type="password" error={errors.confirm?.message} {...register('confirm')} />
 
             <Button type="submit" fullWidth disabled={isSubmitting}>
-              Submit for Approval
+              {isSubmitting ? 'Submitting…' : 'Submit for Approval'}
             </Button>
           </form>
 

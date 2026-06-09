@@ -8,7 +8,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
-import { useChat } from '@/hooks/useChat';
+import { streamChatMessage, sendChatMessage } from '@/api/chat';
 import { getSessions, getSessionMessages } from '@/api/sessions';
 import type { ChatMessage } from '@/types';
 import { useToastStore } from '@/components/ui/Toast';
@@ -44,12 +44,12 @@ function AiMarkdown({ content }: { content: string }) {
 export default function AIAssistant() {
   const { user, learnerId } = useAuth();
   const location = useLocation();
-  const chat = useChat();
   const toast = useToastStore((s) => s.add);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const sessions = useQuery({
@@ -59,11 +59,11 @@ export default function AIAssistant() {
   });
 
   const displaySessionId =
-    sessionId ?? (learnerId ? `SESS-${learnerId.replace('learner_', '').slice(0, 4).toUpperCase()}-A` : null);
+    sessionId ?? (learnerId ? `SESS-${learnerId.slice(0, 8).toUpperCase()}-A` : null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, chat.isPending]);
+  }, [messages, isStreaming]);
 
   useEffect(() => {
     if (sessionStorage.getItem('aitutor_new_session')) {
@@ -98,7 +98,7 @@ export default function AIAssistant() {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || chat.isPending) return;
+    if (!text || isStreaming) return;
     setInput('');
     const userMsg: ChatMessage = {
       id: `u_${Date.now()}`,
@@ -106,28 +106,62 @@ export default function AIAssistant() {
       content: text,
       timestamp: new Date().toISOString(),
     };
-    setMessages((m) => [...m, userMsg]);
+    const assistantId = `a_${Date.now()}`;
+    const payload = {
+      learner_id: learnerId,
+      message: text,
+      session_id: sessionId ?? undefined,
+      course_context: { subject: 'General' },
+      time_budget_minutes: 45,
+    };
+
+    setMessages((m) => [
+      ...m,
+      userMsg,
+      {
+        id: assistantId,
+        role: 'assistant' as const,
+        content: '',
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+    setIsStreaming(true);
+
+    const applyAssistant = (content: string, id?: string, sid?: string) => {
+      if (sid) setSessionId(sid);
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === assistantId
+            ? { ...msg, id: id ?? msg.id, content, timestamp: new Date().toISOString() }
+            : msg,
+        ),
+      );
+    };
+
     try {
-      const res = await chat.mutateAsync({
-        learner_id: learnerId,
-        message: text,
-        session_id: sessionId ?? undefined,
-        course_context: { subject: 'General' },
-        time_budget_minutes: 45,
-      });
-      if (res.session_id) setSessionId(res.session_id);
-      setMessages((m) => [
-        ...m,
-        {
-          id: res.request_id,
-          role: 'assistant',
-          content: res.assistant_message,
-          timestamp: res.timestamp,
+      await streamChatMessage(payload, {
+        onDelta: (chunk) => {
+          setMessages((m) =>
+            m.map((msg) => (msg.id === assistantId ? { ...msg, content: msg.content + chunk } : msg)),
+          );
         },
-      ]);
-      sessions.refetch();
+        onDone: (fullResponse, sid) => {
+          applyAssistant(fullResponse, undefined, sid);
+          sessions.refetch();
+        },
+        onError: (message) => toast(message, 'error'),
+      });
     } catch {
-      toast('Message failed to send. Retry?', 'error');
+      try {
+        const res = await sendChatMessage(payload);
+        applyAssistant(res.assistant_message, res.request_id, res.session_id);
+        sessions.refetch();
+      } catch {
+        setMessages((m) => m.filter((msg) => msg.id !== assistantId));
+        toast('Message failed to send. Retry?', 'error');
+      }
+    } finally {
+      setIsStreaming(false);
     }
   };
 
@@ -186,7 +220,7 @@ export default function AIAssistant() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
-          {messages.length === 0 && !chat.isPending && (
+          {messages.length === 0 && !isStreaming && (
             <EmptyState
               icon={MessageSquare}
               title="Start a conversation"
@@ -215,7 +249,6 @@ export default function AIAssistant() {
               {msg.role === 'user' && <Avatar name={user?.name} size="sm" className="ml-3" />}
             </div>
           ))}
-          {chat.isPending && <Skeleton className="h-12 max-w-md" />}
           <div ref={bottomRef} />
         </div>
 
@@ -234,7 +267,7 @@ export default function AIAssistant() {
               placeholder="Message AI Tutor..."
               className="flex-1 rounded-xl border border-border bg-input px-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <Button onClick={send} disabled={chat.isPending} className="rounded-full px-3">
+            <Button onClick={send} disabled={isStreaming} className="rounded-full px-3">
               <Send className="h-4 w-4" />
             </Button>
           </div>

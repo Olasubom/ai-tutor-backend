@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
@@ -68,7 +68,8 @@ export default function Settings() {
   const [pickerLevel, setPickerLevel] = useState(String(step2.level ?? '200'));
   const [pickerSelected, setPickerSelected] = useState<string[]>([]);
 
-  const departments = useMemo(() => fetchDepartments(), []);
+  const departmentsQ = useQuery({ queryKey: ['departments-settings'], queryFn: () => fetchDepartments() });
+  const departments = departmentsQ.data ?? [];
   const coursesQ = useQuery({
     queryKey: ['admin-courses-settings', pickerDept, pickerLevel],
     queryFn: () => fetchAdminCourses(pickerDept, pickerLevel),
@@ -103,12 +104,12 @@ export default function Settings() {
 
   const saveProfile = async () => {
     try {
+      const dept = departments.find((d) => d.id === departmentId);
       await patchProfile({
-        learner_id: learnerId,
         full_name: fullName,
         field_of_study: field,
         institution,
-        department_id: departmentId,
+        department: dept?.name ?? field,
         academic_level: academicLevel,
       });
       updateUser({ name: fullName });

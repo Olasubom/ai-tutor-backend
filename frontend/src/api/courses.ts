@@ -1,52 +1,76 @@
-import { localPlatform } from './localPlatform';
-import { deleteCourseFromBackend, syncCourseToBackend } from './adminCourses';
-import type { Department, Faculty, UniversityCourse } from '@/types';
+import { apiClient } from './client';
+import type { College, Department, UniversityCourse } from '@/types';
 
-export function fetchFaculties(): Faculty[] {
-  return localPlatform.getFaculties();
+export async function fetchColleges(): Promise<College[]> {
+  const { data } = await apiClient.get<College[]>('/admin/colleges');
+  return data ?? [];
 }
 
-export function fetchDepartments(): Department[] {
-  return localPlatform.getDepartments();
+export async function fetchDepartments(collegeId?: string): Promise<Department[]> {
+  const { data } = await apiClient.get<Department[]>('/admin/departments', {
+    params: collegeId ? { college_id: collegeId } : undefined,
+  });
+  return data ?? [];
 }
 
-export function fetchCourses(departmentId?: string, level?: string): UniversityCourse[] {
-  return localPlatform.getCourses(departmentId, level);
+export async function fetchCourses(departmentId?: string, level?: string): Promise<UniversityCourse[]> {
+  const { data } = await apiClient.get<Array<Record<string, unknown>>>('/admin/courses', {
+    params: { department_id: departmentId, level },
+  });
+  return (data ?? []).map((c) => ({
+    id: String(c.id),
+    department_id: String(c.department_id),
+    course_code: String(c.course_code),
+    course_title: String(c.course_title),
+    level: String(c.level),
+    units: Number(c.credit_units ?? c.units ?? 0),
+    semester: (c.semester as UniversityCourse['semester']) ?? 'First',
+    type: (c.course_type as UniversityCourse['type']) ?? 'Compulsory',
+    description: c.description ? String(c.description) : undefined,
+  }));
 }
 
-export function createDepartment(data: { name: string; faculty_id: string }) {
-  localPlatform.saveDepartment(data);
+/** @deprecated use fetchColleges */
+export const fetchFaculties = fetchColleges;
+
+export async function createDepartment(data: { name: string; faculty_id?: string; college_id?: string }) {
+  const { createDepartment: create } = await import('./admin');
+  return create({ name: data.name, college_id: data.college_id ?? data.faculty_id ?? '' });
 }
 
-export function updateDepartment(id: string, data: { name: string; faculty_id: string }) {
-  localPlatform.saveDepartment({ ...data, id });
+export async function removeDepartment(id: string) {
+  const { deleteDepartment } = await import('./admin');
+  return deleteDepartment(id);
 }
 
-export function removeDepartment(id: string) {
-  localPlatform.deleteDepartment(id);
+export async function createCourse(data: Omit<UniversityCourse, 'id'>) {
+  const { createCourse: create } = await import('./admin');
+  return create({
+    course_code: data.course_code,
+    course_title: data.course_title,
+    department_id: data.department_id,
+    level: data.level,
+    credit_units: data.units,
+    semester: data.semester,
+    course_type: data.type,
+    description: data.description,
+  });
 }
 
-export function createCourse(data: Omit<UniversityCourse, 'id'>) {
-  const course = localPlatform.saveCourse(data);
-  syncCourseToBackend(course).catch(() => {});
-  return course;
+export async function updateCourse(id: string, data: Omit<UniversityCourse, 'id'>) {
+  const { updateCourse: update } = await import('./admin');
+  return update(id, {
+    course_code: data.course_code,
+    course_title: data.course_title,
+    level: data.level,
+    credit_units: data.units,
+    semester: data.semester,
+    course_type: data.type,
+    description: data.description,
+  });
 }
 
-export function updateCourse(id: string, data: Omit<UniversityCourse, 'id'>) {
-  const course = localPlatform.saveCourse({ ...data, id });
-  syncCourseToBackend(course).catch(() => {});
-  return course;
-}
-
-export function removeCourse(id: string) {
-  localPlatform.deleteCourse(id);
-  deleteCourseFromBackend(id).catch(() => {});
-}
-
-export function createFaculty(name: string) {
-  localPlatform.saveFaculty(name);
-}
-
-export function removeFaculty(id: string) {
-  localPlatform.deleteFaculty(id);
+export async function removeCourse(id: string) {
+  const { deleteCourse } = await import('./admin');
+  return deleteCourse(id);
 }

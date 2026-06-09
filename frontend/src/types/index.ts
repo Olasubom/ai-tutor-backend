@@ -10,7 +10,8 @@ export interface AuthUser {
   status?: AccountStatus;
   learner_id?: string;
   staff_id?: string;
-  faculty_id?: string;
+  college_id?: string;
+  faculty_id?: string; // legacy alias
   department_id?: string;
   onboarding_complete?: boolean;
 }
@@ -175,15 +176,20 @@ export interface OnboardingData {
   primaryObjective?: string;
 }
 
-export interface Faculty {
+export interface College {
   id: string;
   name: string;
 }
 
+/** @deprecated use College */
+export type Faculty = College;
+
 export interface Department {
   id: string;
   name: string;
-  faculty_id: string;
+  college_id: string;
+  /** @deprecated use college_id */
+  faculty_id?: string;
   course_count?: number;
 }
 
@@ -211,12 +217,15 @@ export interface Testimonial {
 
 export interface NucIdRecord {
   id: string;
-  staff_id: string;
+  nuc_staff_id: string;
+  /** @deprecated */
+  staff_id?: string;
   label?: string;
-  faculty_id: string;
-  department_id: string;
+  college: string;
+  department: string;
   status: 'active' | 'revoked';
-  created_at: string;
+  added_at?: string;
+  created_at?: string;
 }
 
 export interface ChatMessage {

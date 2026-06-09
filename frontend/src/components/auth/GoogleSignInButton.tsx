@@ -1,9 +1,7 @@
 import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/Button';
 import { loginWithGoogle } from '@/api/auth';
-import { useAuthStore, getRedirectForRole } from '@/stores/authStore';
 import { useToastStore } from '@/components/ui/Toast';
-import { useNavigate } from 'react-router-dom';
 
 interface GoogleSignInButtonProps {
   /** Where new Google students go after first sign-in */
@@ -12,22 +10,14 @@ interface GoogleSignInButtonProps {
 
 const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
-export function GoogleSignInButton({ registerRedirect }: GoogleSignInButtonProps) {
-  const navigate = useNavigate();
-  const authLogin = useAuthStore((s) => s.login);
+export function GoogleSignInButton({ registerRedirect: _registerRedirect }: GoogleSignInButtonProps) {
   const toast = useToastStore((s) => s.add);
 
-  const handleCredential = async (credential: string) => {
+  const handleCredential = async (_credential: string) => {
     try {
-      const result = await loginWithGoogle(credential);
-      authLogin(result.user, result.token);
-      if (result.user.role === 'student' && !result.user.onboarding_complete && registerRedirect) {
-        navigate(registerRedirect);
-      } else {
-        navigate(getRedirectForRole(result.user.role));
-      }
+      await loginWithGoogle(_credential);
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Google sign-in failed', 'error');
+      toast(e instanceof Error ? e.message : 'Google sign-in is not configured on the backend.', 'error');
     }
   };
 

@@ -8,7 +8,7 @@ import { useAuthStore } from './stores/authStore';
 import { localPlatform } from './api/localPlatform';
 
 useThemeStore.getState().init();
-useAuthStore.getState().init();
+useAuthStore.getState().hydrate();
 localPlatform.init();
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
@@ -20,5 +20,11 @@ const app = (
 );
 
 createRoot(document.getElementById('root')!).render(
-  googleClientId ? <GoogleOAuthProvider clientId={googleClientId}>{app}</GoogleOAuthProvider> : app,
+  googleClientId ? (
+    <GoogleOAuthProvider clientId={googleClientId} locale="en">
+      {app}
+    </GoogleOAuthProvider>
+  ) : (
+    app
+  ),
 );

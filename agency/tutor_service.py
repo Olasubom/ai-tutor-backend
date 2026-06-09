@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from dotenv import load_dotenv
 from sqlalchemy import inspect, text
@@ -57,6 +57,20 @@ def _format_user_message(
     return "\n".join(parts)
 
 
+def _extract_text_delta(event: Any) -> str:
+    """Pull assistant text deltas from Agency Swarm / OpenAI stream events."""
+    event_type = getattr(event, "type", None)
+    if event_type == "raw_response_event":
+        data = getattr(event, "data", None)
+        if data is not None and getattr(data, "type", None) == "response.output_text.delta":
+            return str(getattr(data, "delta", "") or "")
+    if isinstance(event, dict):
+        data = event.get("data")
+        if isinstance(data, dict) and data.get("type") == "response.output_text.delta":
+            return str(data.get("delta") or "")
+    return ""
+
+
 def _extract_final_output(result: Any) -> str:
     if hasattr(result, "final_output") and result.final_output:
         return str(result.final_output)
@@ -66,6 +80,79 @@ def _extract_final_output(result: Any) -> str:
         except Exception:
             pass
     return str(result)
+
+
+_SIMPLE_GREETINGS = {
+    "hi",
+    "hello",
+    "hey",
+    "what should i study",
+    "help me",
+    "good morning",
+    "good afternoon",
+    "good evening",
+}
+_SUBJECT_KEYWORDS = [
+    "calculus",
+    "algebra",
+    "statistics",
+    "algorithm",
+    "physics",
+    "chemistry",
+    "explain",
+    "how does",
+    "what is",
+    "help me understand",
+    "solve",
+    "prove",
+    "derive",
+    "integrate",
+    "differentiate",
+    "code",
+    "program",
+    "function",
+    "theorem",
+]
+
+
+def _is_simple_message(message: str) -> bool:
+    text = (message or "").strip().lower()
+    if text in _SIMPLE_GREETINGS:
+        return True
+    words = text.split()
+    if len(words) < 8 and not any(kw in text for kw in _SUBJECT_KEYWORDS):
+        return True
+    return False
+
+
+def _handle_tutor_request_fast(
+    *,
+    learner_id: str,
+    message: str,
+    request_id: str,
+    runtime: Any,
+) -> str:
+    from openai import OpenAI
+
+    client = OpenAI()
+    model = os.getenv("OPENAI_FAST_MODEL", "gpt-4o-mini")
+    profile = runtime.learner_memory.get_profile(learner_id)
+    name = profile.get("onboarding", {}).get("step1", {}).get("full_name") or "there"
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are AITutor, a friendly academic assistant. "
+                    "Keep replies concise and encouraging."
+                ),
+            },
+            {"role": "user", "content": f"Learner name: {name}. Message: {message}"},
+        ],
+        max_tokens=300,
+    )
+    return (response.choices[0].message.content or "").strip() or "Hello! How can I help you study today?"
 
 
 def _extract_modalities_from_message(message: str) -> List[str]:
@@ -127,6 +214,19 @@ def handle_tutor_request(
         extra={"request_id": request_id, "learner_id": learner_id, "routing_hint": routing_hint[:80]},
     )
 
+    if _is_simple_message(message) and os.getenv("OPENAI_API_KEY"):
+        try:
+            assistant_message = _handle_tutor_request_fast(
+                learner_id=learner_id,
+                message=message,
+                request_id=request_id,
+                runtime=runtime,
+            )
+            runtime.learner_memory.append_turn(learner_id, "assistant", assistant_message)
+            return _build_response(request_id, learner_id, assistant_message, runtime)
+        except Exception:
+            logger.exception("fast_tutor_failed", extra={"request_id": request_id})
+
     try:
         result = agency.get_response_sync(
             prompt,
@@ -146,6 +246,103 @@ def handle_tutor_request(
 
     runtime.learner_memory.append_turn(learner_id, "assistant", assistant_message)
     return _build_response(request_id, learner_id, assistant_message, runtime)
+
+
+async def handle_tutor_request_stream(
+    *,
+    learner_id: str,
+    message: str,
+    course_context: Optional[Dict[str, Any]] = None,
+    events: Optional[List[Dict[str, Any]]] = None,
+    time_budget_minutes: Optional[int] = None,
+) -> AsyncIterator[Dict[str, Any]]:
+    """Stream tutoring response tokens via Agency Swarm get_response_stream."""
+    _ensure_env()
+    configure_logging()
+    request_id = new_request_id()
+    runtime = get_runtime()
+
+    stated_modalities = _extract_modalities_from_message(message)
+    if stated_modalities:
+        runtime.learner_memory.update_preferred_modalities(
+            learner_id=learner_id,
+            modalities=stated_modalities,
+            confidence=0.9,
+        )
+
+    if events:
+        runtime.learner_memory.update_learner_profile(learner_id, events)
+
+    runtime.learner_memory.append_turn(learner_id, "user", message)
+
+    user_context: Dict[str, Any] = {
+        "learner_id": learner_id,
+        "request_id": request_id,
+        "course_context": course_context or {},
+        "events": events or [],
+        "time_budget_minutes": time_budget_minutes,
+    }
+
+    routing_hint = detect_routing_hint(message, has_events=bool(events))
+    agency = get_agency()
+    prompt = _format_user_message(
+        message=message,
+        course_context=course_context,
+        events=events,
+        time_budget_minutes=time_budget_minutes,
+    )
+
+    logger.info(
+        "tutor_stream_start",
+        extra={"request_id": request_id, "learner_id": learner_id, "routing_hint": routing_hint[:80]},
+    )
+
+    parts: List[str] = []
+    assistant_message = ""
+
+    try:
+        stream = agency.get_response_stream(
+            prompt,
+            context_override=user_context,
+            additional_instructions=(
+                f"{routing_hint}\n\nFollow the agency manifesto. "
+                "Return a clear assistant_message and structured artifacts when available."
+            ),
+        )
+        async for event in stream:
+            delta = _extract_text_delta(event)
+            if delta:
+                parts.append(delta)
+                yield {"type": "delta", "content": delta}
+
+        try:
+            result = await stream.wait_final_result()
+            if result is not None:
+                final_text = _extract_final_output(result).strip()
+                if final_text and not parts:
+                    assistant_message = final_text
+                    yield {"type": "delta", "content": final_text}
+        except Exception:
+            logger.exception("tutor_stream_final_result_failed", extra={"request_id": request_id})
+
+        assistant_message = assistant_message or "".join(parts)
+    except Exception:
+        logger.exception("tutor_stream_failed", extra={"request_id": request_id})
+        assistant_message = (
+            "I'm having trouble reaching the tutoring agents right now. "
+            "Please verify your OpenAI API key and try again."
+        )
+        yield {"type": "delta", "content": assistant_message}
+
+    if not assistant_message.strip():
+        assistant_message = (
+            "I processed your request but could not generate a visible reply. Please try again."
+        )
+        yield {"type": "delta", "content": assistant_message}
+
+    runtime.learner_memory.append_turn(learner_id, "assistant", assistant_message)
+    payload = _build_response(request_id, learner_id, assistant_message, runtime)
+    yield {"type": "done", **payload}
 
 
 def handle_recommend_request(

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { AuthSidePanel } from '@/components/auth/AuthSidePanel';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
-import { registerStudent } from '@/api/auth';
+import { getOnboardingStatus, registerStudent } from '@/api/auth';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/components/ui/Toast';
 
@@ -24,6 +24,7 @@ type FormData = z.infer<typeof schema>;
 export default function StudentRegister() {
   const navigate = useNavigate();
   const authLogin = useAuthStore((s) => s.login);
+  const setOnboardingComplete = useAuthStore((s) => s.setOnboardingComplete);
   const toast = useToastStore((s) => s.add);
   const {
     register,
@@ -33,9 +34,24 @@ export default function StudentRegister() {
 
   const onSubmit = async (data: FormData) => {
     try {
-      const result = await registerStudent({ name: data.name, email: data.email, password: data.password });
-      authLogin(result.user, result.token);
-      navigate('/onboarding/step1');
+      const tokenResponse = await registerStudent({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+      });
+      authLogin(tokenResponse);
+
+      try {
+        const status = await getOnboardingStatus();
+        if (status.is_complete) {
+          setOnboardingComplete(tokenResponse.user_id);
+          navigate('/student/dashboard');
+        } else {
+          navigate('/onboarding/step1');
+        }
+      } catch {
+        navigate('/onboarding/step1');
+      }
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Registration failed', 'error');
     }
@@ -46,7 +62,9 @@ export default function StudentRegister() {
       <div className="flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           <h1 className="text-[28px] font-extrabold tracking-tight">Create your student account</h1>
-          <p className="mt-2 text-text-secondary">Start your personalized learning journey today.</p>
+          <p className="mt-2 text-text-secondary">
+            Start with the basics — you&apos;ll set up your college and courses during onboarding.
+          </p>
 
           <div className="mt-8">
             <GoogleSignInButton registerRedirect="/onboarding/step1" />
@@ -64,7 +82,7 @@ export default function StudentRegister() {
             <Input label="Password" type="password" error={errors.password?.message} {...register('password')} />
             <Input label="Confirm Password" type="password" error={errors.confirm?.message} {...register('confirm')} />
             <Button type="submit" fullWidth disabled={isSubmitting}>
-              Create Account
+              {isSubmitting ? 'Creating account…' : 'Create Account'}
             </Button>
           </form>
 

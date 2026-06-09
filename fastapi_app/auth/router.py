@@ -1,0 +1,279 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from fastapi_app.admin.models import AdminNucId
+from fastapi_app.auth import memory as learner_memory
+from fastapi_app.auth.models import User
+from pydantic import BaseModel, EmailStr, Field
+
+from fastapi_app.auth.schemas import (
+    ForgotPasswordRequest,
+    LecturerRegister,
+    LoginRequest,
+    OnboardingCompleteRequest,
+    ProfilePatch,
+    ResetPasswordRequest,
+    StudentRegister,
+    TokenResponse,
+    UserProfile,
+)
+from fastapi_app.auth.utils import (
+    create_token,
+    get_current_user,
+    hash_password,
+    require_role,
+    verify_password,
+)
+from fastapi_app.database import get_db
+from fastapi_app.services import auth_service as legacy_auth
+
+router = APIRouter(prefix="/auth", tags=["Auth"])
+
+
+def _token_response(user: User) -> TokenResponse:
+    token = create_token(
+        {
+            "user_id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "name": user.name,
+        }
+    )
+    return TokenResponse(
+        access_token=token,
+        role=user.role,
+        user_id=user.id,
+        name=user.name,
+        email=user.email,
+    )
+
+
+def _user_profile(user: User) -> UserProfile:
+    return UserProfile(
+        user_id=user.id,
+        email=user.email,
+        name=user.name,
+        role=user.role,
+        department=user.department,
+        college=user.college,
+        academic_level=user.academic_level,
+        institution=user.institution,
+        nuc_staff_id=user.nuc_staff_id,
+        is_verified=user.is_verified,
+    )
+
+
+@router.post("/register/student", response_model=TokenResponse)
+def register_student(payload: StudentRegister, db: Annotated[Session, Depends(get_db)]) -> TokenResponse:
+    email = payload.email.lower().strip()
+    existing = db.scalar(select(User).where(User.email == email))
+    if existing:
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
+    user = User(
+        email=email,
+        name=payload.name.strip(),
+        hashed_password=hash_password(payload.password),
+        role="student",
+        is_active=True,
+        is_verified=True,
+        department=payload.department or None,
+        college=payload.college or None,
+        academic_level=payload.academic_level or None,
+        institution=payload.institution or None,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    learner_memory.init_structured_memory(user.id, user.name)
+    return _token_response(user)
+
+
+@router.post("/register/lecturer", status_code=status.HTTP_202_ACCEPTED)
+def register_lecturer(payload: LecturerRegister, db: Annotated[Session, Depends(get_db)]) -> dict:
+    email = payload.email.lower().strip()
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
+    nuc = db.scalar(
+        select(AdminNucId).where(
+            AdminNucId.nuc_staff_id == payload.nuc_staff_id.strip().upper(),
+            AdminNucId.status == "active",
+        )
+    )
+    if not nuc:
+        raise HTTPException(
+            status_code=400,
+            detail="Staff ID not recognized. Contact your college administrator.",
+        )
+
+    user = User(
+        email=email,
+        name=payload.name.strip(),
+        hashed_password=hash_password(payload.password),
+        role="lecturer",
+        is_active=True,
+        is_verified=False,
+        lecturer_status="pending_verification",
+        nuc_staff_id=payload.nuc_staff_id.strip().upper(),
+        college=payload.college,
+        department=payload.department,
+    )
+    db.add(user)
+    db.commit()
+    return {
+        "message": (
+            "Your account is pending administrator approval. "
+            "You will receive confirmation once verified."
+        )
+    }
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> TokenResponse:
+    email = payload.email.lower().strip()
+    user = db.scalar(select(User).where(User.email == email))
+    if not user or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect email or password.")
+    if user.role == "lecturer" and not user.is_verified:
+        raise HTTPException(status_code=403, detail="Your account is pending verification.")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account disabled.")
+    return _token_response(user)
+
+
+@router.get("/me", response_model=UserProfile)
+def me(
+    current: Annotated[dict, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> UserProfile:
+    user = db.get(User, current["user_id"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _user_profile(user)
+
+
+@router.patch("/profile", response_model=UserProfile)
+def patch_profile(
+    payload: ProfilePatch,
+    current: Annotated[dict, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> UserProfile:
+    user = db.get(User, current["user_id"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
+    db.commit()
+    db.refresh(user)
+    learner_memory.update_structured_memory(
+        user.id,
+        {
+            k: v
+            for k, v in {
+                "name": user.name,
+                "department": user.department,
+                "college": user.college,
+                "academic_level": user.academic_level,
+                "institution": user.institution,
+            }.items()
+            if v is not None
+        },
+    )
+    return _user_profile(user)
+
+
+@router.post("/onboarding/complete")
+def complete_onboarding(
+    payload: OnboardingCompleteRequest,
+    current: Annotated[dict, Depends(require_role("student"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    user = db.get(User, current["user_id"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.department = payload.department
+    user.college = payload.college
+    user.academic_level = payload.academic_level
+    user.institution = payload.institution
+    db.commit()
+    learner_memory.update_structured_memory(
+        user.id,
+        {
+            "department": payload.department,
+            "college": payload.college,
+            "academic_level": payload.academic_level,
+            "institution": payload.institution,
+            "courses": payload.selected_course_ids,
+            "subject_ratings": [r.model_dump() for r in payload.subject_ratings],
+            "preferences": {
+                "weekly_hours": payload.weekly_hours,
+                "content_formats": payload.content_formats,
+                "primary_objective": payload.primary_objective,
+            },
+            "onboarding_complete": True,
+        },
+    )
+    return {"status": "complete"}
+
+
+@router.get("/onboarding/status")
+def onboarding_status(current: Annotated[dict, Depends(require_role("student"))]) -> dict:
+    return learner_memory.onboarding_status(current["user_id"])
+
+
+class SyncCredentialsRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    name: str | None = None
+    role: str = "student"
+
+
+@router.post("/sync-credentials")
+def sync_credentials(payload: SyncCredentialsRequest, db: Annotated[Session, Depends(get_db)]) -> dict:
+    """Upsert credentials in DB (and legacy file store for password-reset tests)."""
+    email = payload.email.lower().strip()
+    legacy_auth.sync_credentials(
+        email=email,
+        password=payload.password,
+        name=payload.name,
+        role=payload.role,
+    )
+    user = db.scalar(select(User).where(User.email == email))
+    if user:
+        user.hashed_password = hash_password(payload.password)
+        if payload.name:
+            user.name = payload.name.strip()
+        user.role = payload.role
+    else:
+        user = User(
+            email=email,
+            name=(payload.name or "User").strip(),
+            hashed_password=hash_password(payload.password),
+            role=payload.role,
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(user)
+    db.commit()
+    return {"ok": True, "email": email}
+
+
+# Legacy password-reset (SMTP) — kept for backward compatibility
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest) -> dict:
+    return legacy_auth.request_password_reset(str(payload.email))
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest) -> dict:
+    return legacy_auth.reset_password_with_code(
+        email=str(payload.email),
+        code=payload.code,
+        new_password=payload.new_password,
+    )

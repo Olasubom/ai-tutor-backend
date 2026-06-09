@@ -4,9 +4,11 @@ AI Tutor API routes.
 
 from __future__ import annotations
 
+import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from agency.tutor_service import (
     backfill_content_source_origin,
@@ -14,6 +16,7 @@ from agency.tutor_service import (
     get_learner_profile_snapshot,
     handle_recommend_request,
     handle_tutor_request,
+    handle_tutor_request_stream,
     ingest_source_items,
     list_ingestion_history_snapshot,
     list_content_items_snapshot,
@@ -32,7 +35,14 @@ from fastapi_app.schemas.learner import (
     TutorRecommendResponse,
 )
 from fastapi_app.schemas.platform import KnowledgePatchRequest, KnowledgeSeedRequest
-from fastapi_app.security import require_api_key, require_dev_token
+from fastapi_app.security import (
+    AuthContext,
+    assert_profile_access,
+    get_auth_context,
+    require_api_key,
+    require_dev_token,
+    resolve_learner_id,
+)
 from fastapi_app.services import knowledge_service, onboarding_service, sessions_service
 from fastapi_app.services.engagement_service import record_engagement
 
@@ -41,18 +51,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tutor", tags=["AI Tutor"])
 
 
-@router.post("/chat", response_model=TutorChatResponse)
-def tutor_chat(payload: TutorChatRequest, _: None = Depends(require_api_key)) -> TutorChatResponse:
-    """Full multi-agent tutoring chat via CoordinatorAgent."""
+@router.post("/chat")
+async def tutor_chat(
+    payload: TutorChatRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    stream: bool = Query(default=False),
+):
+    """Full multi-agent tutoring chat via CoordinatorAgent. Supports JWT or API key."""
+    learner_id = resolve_learner_id(auth, payload.learner_id)
+    if stream:
+        return await _tutor_chat_stream_response(
+            TutorChatRequest(**{**payload.model_dump(), "learner_id": learner_id}),
+            auth,
+        )
     try:
         events = [e.model_dump() for e in payload.events] if payload.events else None
         session_id = payload.session_id
         subject = (payload.course_context or {}).get("subject", "General")
         session = sessions_service.get_or_create_session(
-            payload.learner_id, session_id=session_id, subject=str(subject)
+            learner_id, session_id=session_id, subject=str(subject)
         )
         result = handle_tutor_request(
-            learner_id=payload.learner_id,
+            learner_id=learner_id,
             message=payload.message,
             course_context=payload.course_context,
             events=events,
@@ -60,24 +80,88 @@ def tutor_chat(payload: TutorChatRequest, _: None = Depends(require_api_key)) ->
         )
         topic = str(subject) if subject != "General" else None
         sessions_service.touch_session(
-            payload.learner_id,
+            learner_id,
             session["session_id"],
             user_message=payload.message,
             assistant_message=result["assistant_message"],
             topic=topic,
         )
-        record_engagement(payload.learner_id, "chat_message", {"session_id": session["session_id"]})
+        record_engagement(learner_id, "chat_message", {"session_id": session["session_id"]})
         result["session_id"] = session["session_id"]
         return TutorChatResponse(**result)
     except Exception as exc:
-        logger.exception("tutor_chat_failed", extra={"learner_id": payload.learner_id})
+        logger.exception("tutor_chat_failed", extra={"learner_id": learner_id})
         raise HTTPException(status_code=500, detail={"detail": str(exc), "code": "chat_error"}) from exc
+
+
+@router.post("/chat/stream")
+async def tutor_chat_stream_route(
+    payload: TutorChatRequest,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    return await _tutor_chat_stream_response(payload, auth)
+
+
+async def _tutor_chat_stream_response(payload: TutorChatRequest, auth: AuthContext):
+    """Stream tutoring chat tokens via Server-Sent Events."""
+
+    learner_id = resolve_learner_id(auth, payload.learner_id)
+
+    async def event_generator():
+        events = [e.model_dump() for e in payload.events] if payload.events else None
+        subject = (payload.course_context or {}).get("subject", "General")
+        session = sessions_service.get_or_create_session(
+            learner_id, session_id=payload.session_id, subject=str(subject)
+        )
+        session_id = session["session_id"]
+        topic = str(subject) if subject != "General" else None
+        final_message = ""
+
+        try:
+            async for chunk in handle_tutor_request_stream(
+                learner_id=learner_id,
+                message=payload.message,
+                course_context=payload.course_context,
+                events=events,
+                time_budget_minutes=payload.time_budget_minutes,
+            ):
+                if chunk.get("type") == "delta":
+                    yield f"data: {json.dumps({'delta': chunk.get('content', ''), 'done': False}, default=str)}\n\n"
+                elif chunk.get("type") == "done":
+                    final_message = chunk.get("assistant_message", "")
+                    yield f"data: {json.dumps({'delta': '', 'done': True, 'full_response': final_message, 'session_id': session_id}, default=str)}\n\n"
+                else:
+                    yield f"data: {json.dumps(chunk, default=str)}\n\n"
+        except Exception as exc:
+            logger.exception("tutor_chat_stream_failed", extra={"learner_id": learner_id})
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            return
+
+        if final_message:
+            sessions_service.touch_session(
+                learner_id,
+                session_id,
+                user_message=payload.message,
+                assistant_message=final_message,
+                topic=topic,
+            )
+            record_engagement(learner_id, "chat_message", {"session_id": session_id})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/recommend", response_model=TutorRecommendResponse)
 def tutor_recommend(
     payload: TutorRecommendRequest,
-    _: None = Depends(require_api_key),
+    auth: AuthContext = Depends(get_auth_context),
 ) -> TutorRecommendResponse:
     """
     Direct recommendations without full Coordinator orchestration.
@@ -86,8 +170,9 @@ def tutor_recommend(
     """
     try:
         events = [e.model_dump() for e in payload.events] if payload.events else None
+        learner_id = resolve_learner_id(auth, payload.learner_id)
         result = handle_recommend_request(
-            learner_id=payload.learner_id,
+            learner_id=learner_id,
             message=payload.message,
             course_context=payload.course_context,
             events=events,
@@ -116,10 +201,11 @@ def health() -> dict:
 @router.get("/profile/{learner_id}", response_model=LearnerProfileResponse)
 def learner_profile(
     learner_id: str,
-    _: None = Depends(require_api_key),
+    auth: AuthContext = Depends(get_auth_context),
 ) -> LearnerProfileResponse:
     """Debug endpoint to inspect per-learner personalization state."""
     try:
+        assert_profile_access(auth, learner_id)
         result = get_learner_profile_snapshot(learner_id)
         result["profile"] = knowledge_service.enrich_profile(learner_id, result["profile"])
         return LearnerProfileResponse(**result)
