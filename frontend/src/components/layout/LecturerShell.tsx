@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, LayoutDashboard, LogOut, Settings, User, Users } from 'lucide-react';
+import { AlertTriangle, LayoutDashboard, LogOut, Settings, Upload, User, Users } from 'lucide-react';
 import { Sidebar, type NavItem } from './Sidebar';
 import { Header } from './Header';
 import { useAuth } from '@/hooks/useAuth';
@@ -34,6 +34,7 @@ export function LecturerShell() {
 
   const nav: NavItem[] = [
     { to: '/lecturer/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
+    { to: '/lecturer/upload', label: 'Upload Material', icon: <Upload className="h-4 w-4" /> },
     { to: '/lecturer/students', label: 'Students', icon: <Users className="h-4 w-4" /> },
     {
       to: '/lecturer/at-risk',

@@ -19,6 +19,8 @@ ai_tutor.db
 # Local runtime data
 agency/data/memory/
 agency/data/vector_store/
+uploads/
+memory/uploads/
 
 # Node / frontend
 frontend/node_modules/

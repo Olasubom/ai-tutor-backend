@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 import secrets
 from typing import Annotated
 
@@ -14,6 +16,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from fastapi_app.auth.google_oauth import verify_google_credential
 from fastapi_app.auth.schemas import (
+    BootstrapRequest,
     ForgotPasswordRequest,
     GoogleAuthRequest,
     LecturerRegister,
@@ -308,6 +311,51 @@ def sync_credentials(payload: SyncCredentialsRequest, db: Annotated[Session, Dep
         db.add(user)
     db.commit()
     return {"ok": True, "email": email}
+
+
+@router.post("/bootstrap-admin")
+def bootstrap_admin(payload: BootstrapRequest, db: Annotated[Session, Depends(get_db)]) -> dict:
+    """
+    Creates the first admin account.
+    Only works if NO admin account exists yet.
+    Disabled once an admin exists.
+    """
+    bootstrap_key = os.getenv("BOOTSTRAP_KEY", "change-me-in-production")
+    if payload.bootstrap_key != bootstrap_key:
+        raise HTTPException(status_code=403, detail="Invalid bootstrap key")
+
+    existing_admin = db.scalar(select(User).where(User.role == "admin"))
+    if existing_admin:
+        raise HTTPException(
+            status_code=409,
+            detail="Admin account already exists. This endpoint is now disabled.",
+        )
+
+    email = str(payload.email).lower().strip()
+    user = db.scalar(select(User).where(User.email == email))
+    if user:
+        user.role = "admin"
+        user.is_verified = True
+        user.is_active = True
+        if payload.name:
+            user.name = payload.name.strip()
+        if not user.institution:
+            user.institution = "Fountain University"
+        db.commit()
+        return {"message": f"Promoted {email} to admin", "action": "promoted"}
+
+    new_admin = User(
+        email=email,
+        name=(payload.name or "Platform Administrator").strip(),
+        hashed_password=hash_password(payload.password),
+        role="admin",
+        is_active=True,
+        is_verified=True,
+        institution="Fountain University",
+    )
+    db.add(new_admin)
+    db.commit()
+    return {"message": "Admin account created", "action": "created", "email": email}
 
 
 # Legacy password-reset (SMTP) — kept for backward compatibility

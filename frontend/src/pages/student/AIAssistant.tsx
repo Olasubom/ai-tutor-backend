@@ -252,7 +252,7 @@ export default function AIAssistant() {
                 )}
               >
                 <div className="font-mono text-[11px] text-text-muted">{s.session_id}</div>
-                <div className="font-semibold">{s.topics_covered[0] ?? s.subject}</div>
+                <div className="font-semibold">{s.subject || 'General'}</div>
                 <div className="text-text-muted">{s.message_count} messages</div>
               </button>
             ))
