@@ -35,6 +35,7 @@ from fastapi_app.routers.lecturer import router as lecturer_router  # noqa: E402
 from fastapi_app.routers.admin_catalog import router as admin_catalog_router  # noqa: E402
 from fastapi_app.auth.router import router as auth_router  # noqa: E402
 from fastapi_app.admin.router import router as admin_router  # noqa: E402
+from fastapi_app.routers.upload import router as upload_router  # noqa: E402
 from fastapi_app.bootstrap import init_database  # noqa: E402
 from fastapi_app.services.memory_files import ensure_memory_dirs  # noqa: E402
 from agency.core.context import get_runtime  # noqa: E402
@@ -71,6 +72,7 @@ app.include_router(lecturer_router)
 app.include_router(admin_catalog_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(upload_router)
 
 
 @app.on_event("startup")

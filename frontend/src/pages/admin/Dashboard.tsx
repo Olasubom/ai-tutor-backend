@@ -207,7 +207,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8 p-6">
+    <div className="mx-auto max-w-4xl space-y-8">
       <div className="flex items-start justify-between gap-4">
         <div>
           <Badge variant="muted">ADMIN</Badge>
@@ -221,7 +221,7 @@ export default function AdminDashboard() {
           variant="secondary"
           onClick={() => {
             logout();
-            navigate('/login');
+            navigate('/admin/login');
           }}
         >
           <LogOut className="mr-2 h-4 w-4" /> Log out

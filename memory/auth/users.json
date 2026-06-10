@@ -5,10 +5,10 @@
     "name": "Reset Test",
     "role": "student",
     "hash_scheme": "bcrypt",
-    "password_hash": "$2b$12$Oi9noCMfRwFQWhO2yart/e3aMmpz0laH1FtX4L.ScsFbO.rydGn1C",
+    "password_hash": "$2b$12$i3vHNEbBBW8gIPS/up5Hpuhd.sEKn/9pXSKh7LLXmNhxfuL3jhK2i",
     "status": "active",
     "onboarding_complete": false,
-    "updated_at": "2026-06-09T19:26:55.554722+00:00"
+    "updated_at": "2026-06-10T21:26:17.705655+00:00"
   },
   "umaroyetunde415@gmail.com": {
     "email": "umaroyetunde415@gmail.com",
@@ -32,9 +32,9 @@
     "name": "JWT User",
     "role": "student",
     "hash_scheme": "bcrypt",
-    "password_hash": "$2b$12$CnELSEgsoLcbB/rR9JVR9.epx5D/WeFTAxEcFadWDGYk1u3QBiMmS",
+    "password_hash": "$2b$12$zmkqEczwGbQuZ00rIW1LZetDiV5Wbj0JHFyWJW0WxLiI./YFsNqhy",
     "status": "active",
     "onboarding_complete": false,
-    "updated_at": "2026-06-09T19:26:55.902518+00:00"
+    "updated_at": "2026-06-10T21:26:19.904704+00:00"
   }
 }

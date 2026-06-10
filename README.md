@@ -50,6 +50,35 @@ uvicorn fastapi_app.main:app --reload --port 8000
 
 Open Swagger UI: http://localhost:8000/docs
 
+## Creating the first admin account
+
+Option 1 — Automatic (on server startup):
+
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `agency/.env`. The first admin is created automatically on startup if no admin exists.
+
+Option 2 — CLI script:
+
+```bash
+python -m fastapi_app.create_admin
+```
+
+Option 3 — Bootstrap endpoint (one-time use):
+
+`POST /auth/bootstrap-admin`
+
+Body:
+
+```json
+{
+  "bootstrap_key": "your-secret-bootstrap-key",
+  "email": "admin@yourdomain.com",
+  "password": "your-password",
+  "name": "Admin Name"
+}
+```
+
+This endpoint disables itself after the first admin account is created.
+
 Health endpoints:
 - `GET /healthz` — liveness
 - `GET /readyz` — readiness (DB + runtime checks)

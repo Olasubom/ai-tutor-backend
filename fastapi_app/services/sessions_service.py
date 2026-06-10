@@ -13,6 +13,14 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _title_from_message(message: str) -> str:
+    words = message.strip().split()
+    if not words:
+        return "General"
+    snippet = " ".join(words[:4])
+    return snippet.title()
+
+
 def _new_session_id(learner_id: str) -> str:
     prefix = learner_id.replace("learner_", "")[:4].upper()
     suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
@@ -65,6 +73,8 @@ def touch_session(
 
     session["message_count"] = int(session.get("message_count", 0)) + 2
     session["ended_at"] = _now()
+    if int(session.get("message_count", 0)) <= 2 and user_message.strip():
+        session["subject"] = _title_from_message(user_message)
     if topic and topic not in session.get("topics_covered", []):
         session.setdefault("topics_covered", []).append(topic)
     if assistant_message and not session.get("summary"):

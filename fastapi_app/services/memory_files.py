@@ -25,6 +25,7 @@ MEMORY_DIRS = [
     "courses",
     "auth",
     "structured",
+    "uploads",
 ]
 
 

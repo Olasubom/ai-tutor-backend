@@ -43,23 +43,29 @@ def init_database() -> None:
 
 
 def _seed_admin(db: Database) -> None:
-    email = os.getenv("ADMIN_EMAIL", "admin@aitutor.edu").strip().lower()
-    password = os.getenv("ADMIN_PASSWORD", "admin-secret")
+    email = os.getenv("ADMIN_EMAIL", "admin@aitutor.edu.ng").strip().lower()
+    password = os.getenv("ADMIN_PASSWORD", "Admin@AITutor2024")
     with db._SessionLocal() as session:
-        existing = session.scalar(select(User).where(User.email == email))
+        existing = session.scalar(select(User).where(User.role == "admin"))
         if existing:
+            print(f"[STARTUP] Admin exists: {existing.email}")
             return
+
         session.add(
             User(
                 email=email,
-                name="Platform Admin",
+                name="Platform Administrator",
                 hashed_password=hash_password(password),
                 role="admin",
                 is_active=True,
                 is_verified=True,
+                institution="Fountain University",
             )
         )
         session.commit()
+        print(f"[STARTUP] Admin account created: {email}")
+        print(f"[STARTUP] Default password: {password}")
+        print("[STARTUP] CHANGE THIS PASSWORD after first login!")
         logger.info("seeded_admin_user", extra={"email": email})
 
 

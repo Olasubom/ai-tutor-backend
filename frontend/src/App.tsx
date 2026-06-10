@@ -33,7 +33,10 @@ import LecturerDashboard from '@/pages/lecturer/Dashboard';
 import LecturerStudents from '@/pages/lecturer/Students';
 import LecturerSettings from '@/pages/lecturer/Settings';
 import AtRisk from '@/pages/lecturer/AtRisk';
+import UploadMaterial from '@/pages/lecturer/UploadMaterial';
 import AdminDashboard from '@/pages/admin/Dashboard';
+import AdminMaterials from '@/pages/admin/Materials';
+import { AdminShell } from '@/components/layout/AdminShell';
 import Help from '@/pages/student/Help';
 
 const queryClient = new QueryClient({
@@ -93,6 +96,7 @@ export default function App() {
           <Route element={<LecturerRoute />}>
             <Route element={<LecturerShell />}>
               <Route path="/lecturer/dashboard" element={<LecturerDashboard />} />
+              <Route path="/lecturer/upload" element={<UploadMaterial />} />
               <Route path="/lecturer/students" element={<LecturerStudents />} />
               <Route path="/lecturer/at-risk" element={<AtRisk />} />
               <Route path="/lecturer/settings" element={<LecturerSettings />} />
@@ -100,7 +104,10 @@ export default function App() {
           </Route>
 
           <Route element={<AdminRoute />}>
-            <Route path="/admin" element={<AdminDashboard />} />
+            <Route element={<AdminShell />}>
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/materials" element={<AdminMaterials />} />
+            </Route>
           </Route>
 
           <Route path="*" element={<NotFound />} />
