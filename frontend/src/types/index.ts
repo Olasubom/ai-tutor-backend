@@ -11,7 +11,6 @@ export interface AuthUser {
   learner_id?: string;
   staff_id?: string;
   college_id?: string;
-  faculty_id?: string; // legacy alias
   department_id?: string;
   onboarding_complete?: boolean;
 }
@@ -181,15 +180,10 @@ export interface College {
   name: string;
 }
 
-/** @deprecated use College */
-export type Faculty = College;
-
 export interface Department {
   id: string;
   name: string;
   college_id: string;
-  /** @deprecated use college_id */
-  faculty_id?: string;
   course_count?: number;
 }
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from agency.core.tools.database import Base
@@ -42,6 +42,14 @@ class Department(Base):
 
 class Course(Base):
     __tablename__ = "courses"
+    __table_args__ = (
+        UniqueConstraint(
+            "course_code",
+            "department_id",
+            "level",
+            name="uq_course_dept_level",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     course_code: Mapped[str] = mapped_column(String(64), nullable=False)

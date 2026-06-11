@@ -33,12 +33,9 @@ export async function fetchCourses(departmentId?: string, level?: string): Promi
   }));
 }
 
-/** @deprecated use fetchColleges */
-export const fetchFaculties = fetchColleges;
-
-export async function createDepartment(data: { name: string; faculty_id?: string; college_id?: string }) {
+export async function createDepartment(data: { name: string; college_id: string }) {
   const { createDepartment: create } = await import('./admin');
-  return create({ name: data.name, college_id: data.college_id ?? data.faculty_id ?? '' });
+  return create({ name: data.name, college_id: data.college_id });
 }
 
 export async function removeDepartment(id: string) {

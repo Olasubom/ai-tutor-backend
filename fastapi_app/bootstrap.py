@@ -35,9 +35,42 @@ def run_migrations() -> None:
         logger.exception("alembic_upgrade_failed")
 
 
+def _clean_duplicate_courses(db: Database) -> None:
+    """Remove duplicate courses keeping only the first inserted one."""
+    flag = _ROOT / "memory" / ".courses_duplicate_cleanup_done"
+    if flag.exists():
+        return
+
+    with db._SessionLocal() as session:
+        courses = session.scalars(select(Course).order_by(Course.id)).all()
+        seen: set[tuple[str, str, str]] = set()
+        to_delete: list[str] = []
+
+        for course in courses:
+            key = (course.course_code, course.department_id, course.level)
+            if key in seen:
+                to_delete.append(course.id)
+            else:
+                seen.add(key)
+
+        if to_delete:
+            for course_id in to_delete:
+                row = session.get(Course, course_id)
+                if row:
+                    session.delete(row)
+            session.commit()
+            print(f"[CLEANUP] Removed {len(to_delete)} duplicate courses")
+        else:
+            print("[CLEANUP] No duplicate courses found")
+
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.touch()
+
+
 def init_database() -> None:
     db = Database()
     Base.metadata.create_all(bind=db.engine)
+    _clean_duplicate_courses(db)
     run_migrations()
     _seed_admin(db)
     _seed_defaults(db)

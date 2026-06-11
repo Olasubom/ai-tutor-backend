@@ -160,8 +160,21 @@ def create_course(
 ) -> dict:
     if not db.get(Department, payload.department_id):
         raise HTTPException(status_code=404, detail="Department not found")
+    code = payload.course_code.strip().upper()
+    existing = db.scalar(
+        select(Course).where(
+            Course.course_code == code,
+            Course.department_id == payload.department_id,
+            Course.level == payload.level,
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Course {code} already exists in this department at this level.",
+        )
     course = Course(
-        course_code=payload.course_code.strip().upper(),
+        course_code=code,
         course_title=payload.course_title.strip(),
         department_id=payload.department_id,
         level=payload.level,

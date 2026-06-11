@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
 import { Check, LogOut, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
@@ -7,21 +8,21 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import {
-  addFaculty,
+  addCollege,
   addNucId,
   approveLecturer,
   deleteNucId,
-  getFaculties,
+  getColleges,
   getNucIds,
   getPendingLecturers,
   getLecturers,
   getSystemHealth,
   getTestimonials,
   rejectLecturer,
-  removeFaculty,
+  removeCollege,
   revokeNucId,
   saveTestimonial,
-  updateFaculty,
+  updateCollege,
 } from '@/api/admin';
 import {
   createCourse,
@@ -48,24 +49,25 @@ export default function AdminDashboard() {
   const toast = useToastStore((s) => s.add);
   const qc = useQueryClient();
   const [acting, setActing] = useState<string | null>(null);
-  const [newFaculty, setNewFaculty] = useState('');
-  const [editingFaculty, setEditingFaculty] = useState<string | null>(null);
-  const [editFacultyName, setEditFacultyName] = useState('');
+  const [newCollege, setNewCollege] = useState('');
+  const [editingCollege, setEditingCollege] = useState<string | null>(null);
+  const [editCollegeName, setEditCollegeName] = useState('');
   const [newDeptName, setNewDeptName] = useState('');
-  const [newDeptFaculty, setNewDeptFaculty] = useState('');
+  const [newDeptCollege, setNewDeptCollege] = useState('');
   const [courseDept, setCourseDept] = useState('');
   const [courseLevel, setCourseLevel] = useState('100');
   const [newCourseCode, setNewCourseCode] = useState('');
   const [newCourseTitle, setNewCourseTitle] = useState('');
+  const [isSubmittingCourse, setIsSubmittingCourse] = useState(false);
   const [newStaffId, setNewStaffId] = useState('');
   const [newStaffLabel, setNewStaffLabel] = useState('');
   const [newStaffDept, setNewStaffDept] = useState('');
-  const [newStaffFaculty, setNewStaffFaculty] = useState('');
+  const [newStaffCollege, setNewStaffCollege] = useState('');
 
   const pending = useQuery({ queryKey: ['admin-pending'], queryFn: getPendingLecturers });
   const lecturers = useQuery({ queryKey: ['admin-lecturers'], queryFn: getLecturers });
   const health = useQuery({ queryKey: ['admin-health'], queryFn: getSystemHealth, staleTime: 30_000 });
-  const faculties = useQuery({ queryKey: ['admin-faculties'], queryFn: getFaculties });
+  const colleges = useQuery({ queryKey: ['admin-colleges'], queryFn: getColleges });
   const testimonials = useQuery({ queryKey: ['admin-testimonials'], queryFn: getTestimonials });
   const nucIds = useQuery({ queryKey: ['admin-nuc-ids'], queryFn: getNucIds });
 
@@ -91,11 +93,11 @@ export default function AdminDashboard() {
 
   const refreshCatalog = async () => {
     await Promise.all([
-      qc.refetchQueries({ queryKey: ['admin-faculties'] }),
+      qc.refetchQueries({ queryKey: ['admin-colleges'] }),
       qc.refetchQueries({ queryKey: ['admin-departments'] }),
       qc.refetchQueries({ queryKey: ['admin-courses'] }),
       qc.refetchQueries({ queryKey: ['admin-nuc-ids'] }),
-      qc.refetchQueries({ queryKey: ['faculties'] }),
+      qc.refetchQueries({ queryKey: ['colleges'] }),
     ]);
   };
 
@@ -126,45 +128,45 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAddFaculty = async () => {
-    const name = newFaculty.trim();
+  const handleAddCollege = async () => {
+    const name = newCollege.trim();
     if (!name) return;
     try {
-      await addFaculty(name);
-      setNewFaculty('');
+      await addCollege(name);
+      setNewCollege('');
       await refreshCatalog();
-      toast('Faculty added', 'success');
+      toast('College added', 'success');
     } catch {
-      toast('Could not add faculty', 'error');
+      toast('Could not add college', 'error');
     }
   };
 
-  const handleSaveFaculty = async (id: string) => {
-    const name = editFacultyName.trim();
+  const handleSaveCollege = async (id: string) => {
+    const name = editCollegeName.trim();
     if (!name) return;
     try {
-      await updateFaculty(id, name);
-      setEditingFaculty(null);
+      await updateCollege(id, name);
+      setEditingCollege(null);
       await refreshCatalog();
-      toast('Faculty updated', 'success');
+      toast('College updated', 'success');
     } catch {
-      toast('Could not update faculty', 'error');
+      toast('Could not update college', 'error');
     }
   };
 
-  const handleDeleteFaculty = async (id: string) => {
-    const hasDepts = departmentRows.some((d) => (d.college_id ?? d.faculty_id) === id);
+  const handleDeleteCollege = async (id: string) => {
+    const hasDepts = departmentRows.some((d) => d.college_id === id);
     if (hasDepts) {
-      toast('Remove or reassign departments in this faculty first', 'error');
+      toast('Remove or reassign departments in this college first', 'error');
       return;
     }
     setActing(id);
     try {
-      await removeFaculty(id);
+      await removeCollege(id);
       await refreshCatalog();
-      toast('Faculty removed', 'success');
+      toast('College removed', 'success');
     } catch {
-      toast('Could not remove faculty', 'error');
+      toast('Could not remove college', 'error');
     } finally {
       setActing(null);
     }
@@ -178,9 +180,9 @@ export default function AdminDashboard() {
 
   const handleAddDepartment = async () => {
     const name = newDeptName.trim();
-    if (!name || !newDeptFaculty) return;
+    if (!name || !newDeptCollege) return;
     try {
-      await createDepartment({ name, faculty_id: newDeptFaculty });
+      await createDepartment({ name, college_id: newDeptCollege });
       setNewDeptName('');
       await refreshCatalog();
       toast('Department added', 'success');
@@ -206,40 +208,54 @@ export default function AdminDashboard() {
   const handleAddCourse = async () => {
     if (!courseDept || !newCourseCode.trim() || !newCourseTitle.trim()) return;
     const level = courseLevel || '100';
-    setActing('add-course');
+    const code = newCourseCode.trim().toUpperCase();
+
+    const isDuplicate = courseRows.some(
+      (c) =>
+        c.course_code.toLowerCase().trim() === code.toLowerCase().trim() &&
+        c.department_id === courseDept &&
+        c.level === level,
+    );
+    if (isDuplicate) {
+      toast(`${code} already exists in this department at this level.`, 'error');
+      return;
+    }
+
+    setIsSubmittingCourse(true);
     try {
-      const created = await createCourse({
+      await createCourse({
         department_id: courseDept,
-        course_code: newCourseCode.trim().toUpperCase(),
+        course_code: code,
         course_title: newCourseTitle.trim(),
         level,
         units: 3,
         semester: 'First',
         type: 'Compulsory',
       });
+      setCourseLevel(level);
       setNewCourseCode('');
       setNewCourseTitle('');
-      if (!courseLevel) setCourseLevel(level);
-      qc.setQueryData<typeof courseRows>(
-        ['admin-courses', courseDept, courseLevel],
-        (old) => [...(old ?? []), created],
-      );
-      await qc.refetchQueries({ queryKey: ['admin-courses', courseDept] });
-      toast('Course added and synced', 'success');
-    } catch {
-      toast('Could not add course', 'error');
+      await qc.refetchQueries({ queryKey: ['admin-courses', courseDept, level] });
+      toast('Course added successfully', 'success');
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        const detail = err.response.data?.detail;
+        toast(typeof detail === 'string' ? detail : 'Course already exists.', 'error');
+      } else {
+        toast('Failed to add course', 'error');
+      }
     } finally {
-      setActing(null);
+      setIsSubmittingCourse(false);
     }
   };
 
   const handleAddStaffId = async () => {
-    if (!newStaffId.trim() || !newStaffFaculty || !newStaffDept) return;
+    if (!newStaffId.trim() || !newStaffCollege || !newStaffDept) return;
     try {
       await addNucId({
         staff_id: newStaffId.trim().toUpperCase(),
         label: newStaffLabel.trim() || undefined,
-        faculty_id: newStaffFaculty,
+        college_id: newStaffCollege,
         department_id: newStaffDept,
       });
       setNewStaffId('');
@@ -298,44 +314,44 @@ export default function AdminDashboard() {
       </div>
 
       <Card className="p-6">
-        <h2 className="text-[18px] font-bold">Faculties</h2>
+        <h2 className="text-[18px] font-bold">Colleges</h2>
         <p className="mt-1 text-[14px] text-text-muted">
           Shown on lecturer registration. Duplicates are removed automatically.
         </p>
         <div className="mt-4 flex gap-2">
           <Input
-            placeholder="New faculty name, e.g. Faculty of Arts"
-            value={newFaculty}
-            onChange={(e) => setNewFaculty(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddFaculty()}
+            placeholder="New college name, e.g. College of Arts"
+            value={newCollege}
+            onChange={(e) => setNewCollege(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddCollege()}
           />
-          <Button type="button" onClick={handleAddFaculty}>
+          <Button type="button" onClick={handleAddCollege}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
         <div className="mt-4 space-y-2">
-          {faculties.data?.map((f) => (
-            <div key={f.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
-              {editingFaculty === f.id ? (
+          {colleges.data?.map((college) => (
+            <div key={college.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
+              {editingCollege === college.id ? (
                 <>
-                  <Input value={editFacultyName} onChange={(e) => setEditFacultyName(e.target.value)} />
-                  <Button type="button" onClick={() => handleSaveFaculty(f.id)}>
+                  <Input value={editCollegeName} onChange={(e) => setEditCollegeName(e.target.value)} />
+                  <Button type="button" onClick={() => handleSaveCollege(college.id)}>
                     <Check className="h-4 w-4" />
                   </Button>
-                  <Button type="button" variant="ghost" onClick={() => setEditingFaculty(null)}>
+                  <Button type="button" variant="ghost" onClick={() => setEditingCollege(null)}>
                     <X className="h-4 w-4" />
                   </Button>
                 </>
               ) : (
                 <>
-                  <span className="font-medium">{f.name}</span>
+                  <span className="font-medium">{college.name}</span>
                   <div className="flex gap-1">
                     <button
                       type="button"
                       className="rounded p-2 text-text-muted hover:bg-card-hover"
                       onClick={() => {
-                        setEditingFaculty(f.id);
-                        setEditFacultyName(f.name);
+                        setEditingCollege(college.id);
+                        setEditCollegeName(college.name);
                       }}
                     >
                       <Pencil className="h-4 w-4" />
@@ -343,8 +359,8 @@ export default function AdminDashboard() {
                     <button
                       type="button"
                       className="rounded p-2 text-error hover:bg-card-hover disabled:opacity-50"
-                      disabled={acting === f.id}
-                      onClick={() => handleDeleteFaculty(f.id)}
+                      disabled={acting === college.id}
+                      onClick={() => handleDeleteCollege(college.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -366,11 +382,11 @@ export default function AdminDashboard() {
             onChange={(e) => setNewDeptName(e.target.value)}
           />
           <Select
-            value={newDeptFaculty}
-            onChange={(e) => setNewDeptFaculty(e.target.value)}
+            value={newDeptCollege}
+            onChange={(e) => setNewDeptCollege(e.target.value)}
             options={[
-              { value: '', label: 'Select faculty…' },
-              ...(faculties.data ?? []).map((f) => ({ value: f.id, label: f.name })),
+              { value: '', label: 'Select college…' },
+              ...(colleges.data ?? []).map((college) => ({ value: college.id, label: college.name })),
             ]}
           />
           <Button type="button" onClick={handleAddDepartment}>
@@ -379,13 +395,13 @@ export default function AdminDashboard() {
         </div>
         <div className="mt-4 space-y-2">
           {departmentRows.map((d) => {
-            const fac = faculties.data?.find((f) => f.id === (d.college_id ?? d.faculty_id));
+            const college = colleges.data?.find((c) => c.id === d.college_id);
             return (
               <div key={d.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
                 <div>
                   <span className="font-medium">{d.name}</span>
                   <span className="ml-2 text-[13px] text-text-muted">
-                    {fac?.name} · {d.course_count ?? 0} courses
+                    {college?.name} · {d.course_count ?? 0} courses
                   </span>
                 </div>
                 <button
@@ -411,6 +427,11 @@ export default function AdminDashboard() {
           <p className="mt-2 text-[13px] text-text-muted">
             Viewing: <span className="font-medium text-text-primary">{selectedDeptName}</span>
             {courseLevel ? ` · Level ${courseLevel}` : ' · All levels'}
+          </p>
+        )}
+        {courseDept && courseLevel && !courses.isLoading && (
+          <p className="mt-1 text-[13px] text-text-muted">
+            {courseRows.length} course{courseRows.length !== 1 ? 's' : ''} at {courseLevel} Level
           </p>
         )}
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -446,8 +467,13 @@ export default function AdminDashboard() {
             onChange={(e) => setNewCourseTitle(e.target.value)}
           />
         </div>
-        <Button type="button" className="mt-4" onClick={handleAddCourse} disabled={!courseDept || acting === 'add-course'}>
-          <Plus className="h-4 w-4" /> {acting === 'add-course' ? 'Adding…' : 'Add course'}
+        <Button
+          type="button"
+          className="mt-4"
+          onClick={handleAddCourse}
+          disabled={isSubmittingCourse || !courseDept || !newCourseCode.trim() || !newCourseTitle.trim()}
+        >
+          <Plus className="h-4 w-4" /> {isSubmittingCourse ? 'Adding…' : 'Add course'}
         </Button>
         <div className="mt-4 space-y-2">
           {courses.isLoading ? (
@@ -475,7 +501,7 @@ export default function AdminDashboard() {
                     setActing(c.id);
                     try {
                       await removeCourse(c.id);
-                      await qc.refetchQueries({ queryKey: ['admin-courses', courseDept] });
+                      await qc.refetchQueries({ queryKey: ['admin-courses', courseDept, courseLevel] });
                       toast('Course removed', 'success');
                     } catch {
                       toast('Could not remove course', 'error');
@@ -511,15 +537,15 @@ export default function AdminDashboard() {
             onChange={(e) => setNewStaffLabel(e.target.value)}
           />
           <Select
-            label="Faculty"
-            value={newStaffFaculty}
+            label="College"
+            value={newStaffCollege}
             onChange={(e) => {
-              setNewStaffFaculty(e.target.value);
+              setNewStaffCollege(e.target.value);
               setNewStaffDept('');
             }}
             options={[
-              { value: '', label: 'Select faculty…' },
-              ...(faculties.data ?? []).map((f) => ({ value: f.id, label: f.name })),
+              { value: '', label: 'Select college…' },
+              ...(colleges.data ?? []).map((college) => ({ value: college.id, label: college.name })),
             ]}
           />
           <Select
@@ -529,7 +555,7 @@ export default function AdminDashboard() {
             options={[
               { value: '', label: 'Select department…' },
               ...departmentRows
-                .filter((d) => !newStaffFaculty || (d.college_id ?? d.faculty_id) === newStaffFaculty)
+                .filter((d) => !newStaffCollege || d.college_id === newStaffCollege)
                 .map((d) => ({ value: d.id, label: d.name })),
             ]}
           />
