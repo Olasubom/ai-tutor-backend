@@ -24,8 +24,11 @@ export default function AdminLogin() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
+
+  const adminEmail = watch('email');
 
   const onSubmit = async (data: FormData) => {
     setFormError(null);
@@ -58,7 +61,19 @@ export default function AdminLogin() {
           <div>
             <Input label="Password" type="password" error={errors.password?.message} {...register('password')} />
             <p className="mt-2 text-right text-[13px]">
-              <Link to="/forgot-password" className="text-primary hover:underline">
+              <Link
+                to="/admin/forgot-password"
+                state={{ email: adminEmail?.trim() }}
+                className="text-primary hover:underline"
+                onClick={(e) => {
+                  if (!adminEmail?.trim()) {
+                    e.preventDefault();
+                    setFormError({
+                      message: 'Enter your admin email above first, then click Forgot password.',
+                    });
+                  }
+                }}
+              >
                 Forgot password?
               </Link>
             </p>

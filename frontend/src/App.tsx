@@ -12,6 +12,7 @@ import StudentRegister from '@/pages/auth/StudentRegister';
 import LecturerRegister from '@/pages/auth/LecturerRegister';
 import LecturerPending from '@/pages/auth/LecturerPending';
 import AdminLogin from '@/pages/auth/AdminLogin';
+import AdminForgotPassword from '@/pages/auth/AdminForgotPassword';
 import ForgotPassword from '@/pages/auth/ForgotPassword';
 import OnboardingShell from '@/pages/onboarding/OnboardingShell';
 import Step1Profile from '@/pages/onboarding/Step1Profile';
@@ -36,6 +37,7 @@ import AtRisk from '@/pages/lecturer/AtRisk';
 import UploadMaterial from '@/pages/lecturer/UploadMaterial';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import AdminMaterials from '@/pages/admin/Materials';
+import AdminUsers from '@/pages/admin/Users';
 import { AdminShell } from '@/components/layout/AdminShell';
 import Help from '@/pages/student/Help';
 
@@ -67,6 +69,7 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/forgot-password" element={<AdminForgotPassword />} />
 
           <Route path="/onboarding" element={<OnboardingShell />}>
             <Route index element={<Navigate to="step1" replace />} />
@@ -106,6 +109,7 @@ export default function App() {
           <Route element={<AdminRoute />}>
             <Route element={<AdminShell />}>
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/materials" element={<AdminMaterials />} />
             </Route>
           </Route>

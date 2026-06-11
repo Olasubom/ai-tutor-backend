@@ -423,3 +423,62 @@ def suspend_student(
     user.is_active = False
     db.commit()
     return {"ok": True}
+
+
+@router.delete("/students/{user_id}")
+def delete_student(
+    user_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[dict, Depends(require_role("admin"))],
+) -> dict:
+    user = db.get(User, user_id)
+    if not user or user.role != "student":
+        raise HTTPException(status_code=404, detail="Student not found")
+    if user.id == current["user_id"]:
+        raise HTTPException(status_code=403, detail="You cannot delete your own account")
+    db.delete(user)
+    db.commit()
+    return {"ok": True, "message": "Student deleted"}
+
+
+@router.get("/lecturers")
+def list_lecturers(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[dict, Depends(require_role("admin"))],
+    status: Optional[str] = Query(default=None),
+) -> List[dict]:
+    q = select(User).where(User.role == "lecturer")
+    if status:
+        q = q.where(User.lecturer_status == status)
+    rows = db.scalars(q.order_by(User.created_at.desc())).all()
+    return [
+        {
+            "user_id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "nuc_staff_id": u.nuc_staff_id,
+            "college": u.college,
+            "department": u.department,
+            "lecturer_status": u.lecturer_status,
+            "is_active": u.is_active,
+            "is_verified": u.is_verified,
+            "created_at": u.created_at.isoformat(),
+        }
+        for u in rows
+    ]
+
+
+@router.delete("/lecturers/{user_id}")
+def delete_lecturer(
+    user_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[dict, Depends(require_role("admin"))],
+) -> dict:
+    user = db.get(User, user_id)
+    if not user or user.role != "lecturer":
+        raise HTTPException(status_code=404, detail="Lecturer not found")
+    if user.id == current["user_id"]:
+        raise HTTPException(status_code=403, detail="You cannot delete your own account")
+    db.delete(user)
+    db.commit()
+    return {"ok": True, "message": "Lecturer deleted"}

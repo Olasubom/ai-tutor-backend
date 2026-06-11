@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, LogOut, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -54,7 +54,7 @@ export default function AdminDashboard() {
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptFaculty, setNewDeptFaculty] = useState('');
   const [courseDept, setCourseDept] = useState('');
-  const [courseLevel, setCourseLevel] = useState('200');
+  const [courseLevel, setCourseLevel] = useState('100');
   const [newCourseCode, setNewCourseCode] = useState('');
   const [newCourseTitle, setNewCourseTitle] = useState('');
   const [newStaffId, setNewStaffId] = useState('');
@@ -72,22 +72,42 @@ export default function AdminDashboard() {
   const departments = useQuery({ queryKey: ['admin-departments'], queryFn: () => fetchDepartments() });
   const courses = useQuery({
     queryKey: ['admin-courses', courseDept, courseLevel],
-    queryFn: () => fetchCourses(courseDept || undefined, courseLevel || undefined),
+    queryFn: () => fetchCourses(courseDept, courseLevel || undefined),
     enabled: !!courseDept,
   });
   const departmentRows = departments.data ?? [];
   const courseRows = courses.data ?? [];
+
+  useEffect(() => {
+    if (!courseDept && departmentRows.length > 0) {
+      setCourseDept(departmentRows[0].id);
+    }
+  }, [courseDept, departmentRows.length, departmentRows[0]?.id]);
+
+  const selectedDeptName = departmentRows.find((d) => d.id === courseDept)?.name;
   const [drafts, setDrafts] = useState<Record<string, Testimonial>>({});
 
   const getDraft = (t: Testimonial) => drafts[t.id] ?? t;
 
+  const refreshCatalog = async () => {
+    await Promise.all([
+      qc.refetchQueries({ queryKey: ['admin-faculties'] }),
+      qc.refetchQueries({ queryKey: ['admin-departments'] }),
+      qc.refetchQueries({ queryKey: ['admin-courses'] }),
+      qc.refetchQueries({ queryKey: ['admin-nuc-ids'] }),
+      qc.refetchQueries({ queryKey: ['faculties'] }),
+    ]);
+  };
+
   const handleApprove = async (userId: string) => {
     setActing(userId);
     try {
-      approveLecturer(userId);
+      await approveLecturer(userId);
       await qc.invalidateQueries({ queryKey: ['admin-pending'] });
       await qc.invalidateQueries({ queryKey: ['admin-lecturers'] });
       toast('Lecturer approved', 'success');
+    } catch {
+      toast('Could not approve lecturer', 'error');
     } finally {
       setActing(null);
     }
@@ -96,44 +116,58 @@ export default function AdminDashboard() {
   const handleReject = async (userId: string) => {
     setActing(userId);
     try {
-      rejectLecturer(userId);
+      await rejectLecturer(userId);
       await qc.invalidateQueries({ queryKey: ['admin-pending'] });
       toast('Lecturer rejected', 'success');
+    } catch {
+      toast('Could not reject lecturer', 'error');
     } finally {
       setActing(null);
     }
   };
 
-  const handleAddFaculty = () => {
+  const handleAddFaculty = async () => {
     const name = newFaculty.trim();
     if (!name) return;
-    addFaculty(name);
-    setNewFaculty('');
-    qc.invalidateQueries({ queryKey: ['admin-faculties'] });
-    qc.invalidateQueries({ queryKey: ['faculties'] });
-    toast('Faculty added', 'success');
+    try {
+      await addFaculty(name);
+      setNewFaculty('');
+      await refreshCatalog();
+      toast('Faculty added', 'success');
+    } catch {
+      toast('Could not add faculty', 'error');
+    }
   };
 
-  const handleSaveFaculty = (id: string) => {
+  const handleSaveFaculty = async (id: string) => {
     const name = editFacultyName.trim();
     if (!name) return;
-    updateFaculty(id, name);
-    setEditingFaculty(null);
-    qc.invalidateQueries({ queryKey: ['admin-faculties'] });
-    qc.invalidateQueries({ queryKey: ['faculties'] });
-    toast('Faculty updated', 'success');
+    try {
+      await updateFaculty(id, name);
+      setEditingFaculty(null);
+      await refreshCatalog();
+      toast('Faculty updated', 'success');
+    } catch {
+      toast('Could not update faculty', 'error');
+    }
   };
 
-  const handleDeleteFaculty = (id: string) => {
+  const handleDeleteFaculty = async (id: string) => {
     const hasDepts = departmentRows.some((d) => (d.college_id ?? d.faculty_id) === id);
     if (hasDepts) {
       toast('Remove or reassign departments in this faculty first', 'error');
       return;
     }
-    removeFaculty(id);
-    qc.invalidateQueries({ queryKey: ['admin-faculties'] });
-    qc.invalidateQueries({ queryKey: ['faculties'] });
-    toast('Faculty removed', 'success');
+    setActing(id);
+    try {
+      await removeFaculty(id);
+      await refreshCatalog();
+      toast('Faculty removed', 'success');
+    } catch {
+      toast('Could not remove faculty', 'error');
+    } finally {
+      setActing(null);
+    }
   };
 
   const updateDraft = (id: string, patch: Partial<Testimonial>) => {
@@ -142,56 +176,79 @@ export default function AdminDashboard() {
     setDrafts((d) => ({ ...d, [id]: { ...getDraft(current), ...patch } }));
   };
 
-  const refreshCatalog = () => {
-    qc.invalidateQueries({ queryKey: ['admin-faculties'] });
-    qc.invalidateQueries({ queryKey: ['admin-courses'] });
-    qc.invalidateQueries({ queryKey: ['admin-nuc-ids'] });
-  };
-
-  const handleAddDepartment = () => {
+  const handleAddDepartment = async () => {
     const name = newDeptName.trim();
     if (!name || !newDeptFaculty) return;
-    createDepartment({ name, faculty_id: newDeptFaculty });
-    setNewDeptName('');
-    refreshCatalog();
-    toast('Department added', 'success');
+    try {
+      await createDepartment({ name, faculty_id: newDeptFaculty });
+      setNewDeptName('');
+      await refreshCatalog();
+      toast('Department added', 'success');
+    } catch {
+      toast('Could not add department', 'error');
+    }
   };
 
-  const handleDeleteDepartment = (id: string) => {
-    removeDepartment(id);
-    refreshCatalog();
-    toast('Department removed', 'success');
+  const handleDeleteDepartment = async (id: string) => {
+    setActing(id);
+    try {
+      await removeDepartment(id);
+      if (courseDept === id) setCourseDept('');
+      await refreshCatalog();
+      toast('Department removed', 'success');
+    } catch {
+      toast('Could not remove department', 'error');
+    } finally {
+      setActing(null);
+    }
   };
 
-  const handleAddCourse = () => {
+  const handleAddCourse = async () => {
     if (!courseDept || !newCourseCode.trim() || !newCourseTitle.trim()) return;
-    createCourse({
-      department_id: courseDept,
-      course_code: newCourseCode.trim().toUpperCase(),
-      course_title: newCourseTitle.trim(),
-      level: courseLevel,
-      units: 3,
-      semester: 'First',
-      type: 'Compulsory',
-    });
-    setNewCourseCode('');
-    setNewCourseTitle('');
-    refreshCatalog();
-    toast('Course added and synced', 'success');
+    const level = courseLevel || '100';
+    setActing('add-course');
+    try {
+      const created = await createCourse({
+        department_id: courseDept,
+        course_code: newCourseCode.trim().toUpperCase(),
+        course_title: newCourseTitle.trim(),
+        level,
+        units: 3,
+        semester: 'First',
+        type: 'Compulsory',
+      });
+      setNewCourseCode('');
+      setNewCourseTitle('');
+      if (!courseLevel) setCourseLevel(level);
+      qc.setQueryData<typeof courseRows>(
+        ['admin-courses', courseDept, courseLevel],
+        (old) => [...(old ?? []), created],
+      );
+      await qc.refetchQueries({ queryKey: ['admin-courses', courseDept] });
+      toast('Course added and synced', 'success');
+    } catch {
+      toast('Could not add course', 'error');
+    } finally {
+      setActing(null);
+    }
   };
 
-  const handleAddStaffId = () => {
+  const handleAddStaffId = async () => {
     if (!newStaffId.trim() || !newStaffFaculty || !newStaffDept) return;
-    addNucId({
-      staff_id: newStaffId.trim().toUpperCase(),
-      label: newStaffLabel.trim() || undefined,
-      faculty_id: newStaffFaculty,
-      department_id: newStaffDept,
-    });
-    setNewStaffId('');
-    setNewStaffLabel('');
-    qc.invalidateQueries({ queryKey: ['admin-nuc-ids'] });
-    toast('Staff ID added', 'success');
+    try {
+      await addNucId({
+        staff_id: newStaffId.trim().toUpperCase(),
+        label: newStaffLabel.trim() || undefined,
+        faculty_id: newStaffFaculty,
+        department_id: newStaffDept,
+      });
+      setNewStaffId('');
+      setNewStaffLabel('');
+      await qc.invalidateQueries({ queryKey: ['admin-nuc-ids'] });
+      toast('Staff ID added', 'success');
+    } catch {
+      toast('Could not add staff ID', 'error');
+    }
   };
 
   const handleSaveTestimonial = (t: Testimonial) => {
@@ -211,11 +268,8 @@ export default function AdminDashboard() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <Badge variant="muted">ADMIN</Badge>
-          <h1 className="mt-2 text-[28px] font-extrabold">Platform administration</h1>
-          <p className="text-text-secondary">
-            Manage faculties, departments, courses, lecturer approvals, and staff IDs. Login at{' '}
-            <code className="text-[13px]">/admin/login</code>
-          </p>
+          <h1 className="mt-2 text-[28px] font-extrabold">Platform Administration</h1>
+
         </div>
         <Button
           variant="secondary"
@@ -288,7 +342,8 @@ export default function AdminDashboard() {
                     </button>
                     <button
                       type="button"
-                      className="rounded p-2 text-error hover:bg-card-hover"
+                      className="rounded p-2 text-error hover:bg-card-hover disabled:opacity-50"
+                      disabled={acting === f.id}
                       onClick={() => handleDeleteFaculty(f.id)}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -335,7 +390,8 @@ export default function AdminDashboard() {
                 </div>
                 <button
                   type="button"
-                  className="rounded p-2 text-error hover:bg-card-hover"
+                  className="rounded p-2 text-error hover:bg-card-hover disabled:opacity-50"
+                  disabled={acting === d.id}
                   onClick={() => handleDeleteDepartment(d.id)}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -351,21 +407,31 @@ export default function AdminDashboard() {
         <p className="mt-1 text-[14px] text-text-muted">
           Courses appear in student onboarding when they pick a department and level.
         </p>
+        {selectedDeptName && (
+          <p className="mt-2 text-[13px] text-text-muted">
+            Viewing: <span className="font-medium text-text-primary">{selectedDeptName}</span>
+            {courseLevel ? ` · Level ${courseLevel}` : ' · All levels'}
+          </p>
+        )}
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Select
             label="Department"
             value={courseDept}
             onChange={(e) => setCourseDept(e.target.value)}
-            options={[
-              { value: '', label: 'All departments' },
-              ...departmentRows.map((d) => ({ value: d.id, label: d.name })),
-            ]}
+            options={
+              departmentRows.length === 0
+                ? [{ value: '', label: 'Add a department first' }]
+                : departmentRows.map((d) => ({ value: d.id, label: d.name }))
+            }
           />
           <Select
             label="Level"
             value={courseLevel}
             onChange={(e) => setCourseLevel(e.target.value)}
-            options={['100', '200', '300', '400', '500'].map((l) => ({ value: l, label: `${l} Level` }))}
+            options={[
+              { value: '', label: 'All levels' },
+              ...['100', '200', '300', '400', '500'].map((l) => ({ value: l, label: `${l} Level` })),
+            ]}
           />
           <Input
             label="Course code"
@@ -380,12 +446,18 @@ export default function AdminDashboard() {
             onChange={(e) => setNewCourseTitle(e.target.value)}
           />
         </div>
-        <Button type="button" className="mt-4" onClick={handleAddCourse} disabled={!courseDept}>
-          <Plus className="h-4 w-4" /> Add course
+        <Button type="button" className="mt-4" onClick={handleAddCourse} disabled={!courseDept || acting === 'add-course'}>
+          <Plus className="h-4 w-4" /> {acting === 'add-course' ? 'Adding…' : 'Add course'}
         </Button>
         <div className="mt-4 space-y-2">
-          {courseRows.length === 0 ? (
-            <p className="text-[14px] text-text-muted">No courses for this filter. Add one above.</p>
+          {courses.isLoading ? (
+            <p className="text-[14px] text-text-muted">Loading courses…</p>
+          ) : !courseDept ? (
+            <p className="text-[14px] text-text-muted">Select a department to view courses.</p>
+          ) : courseRows.length === 0 ? (
+            <p className="text-[14px] text-text-muted">
+              No courses for this filter. Add one above or try &quot;All levels&quot;.
+            </p>
           ) : (
             courseRows.map((c) => (
               <div key={c.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
@@ -397,11 +469,19 @@ export default function AdminDashboard() {
                 </div>
                 <button
                   type="button"
-                  className="rounded p-2 text-error hover:bg-card-hover"
-                  onClick={() => {
-                    removeCourse(c.id);
-                    refreshCatalog();
-                    toast('Course removed', 'success');
+                  className="rounded p-2 text-error hover:bg-card-hover disabled:opacity-50"
+                  disabled={acting === c.id}
+                  onClick={async () => {
+                    setActing(c.id);
+                    try {
+                      await removeCourse(c.id);
+                      await qc.refetchQueries({ queryKey: ['admin-courses', courseDept] });
+                      toast('Course removed', 'success');
+                    } catch {
+                      toast('Could not remove course', 'error');
+                    } finally {
+                      setActing(null);
+                    }
                   }}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -473,10 +553,18 @@ export default function AdminDashboard() {
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => {
-                        revokeNucId(n.id);
-                        qc.invalidateQueries({ queryKey: ['admin-nuc-ids'] });
-                        toast('Staff ID revoked', 'success');
+                      disabled={acting === n.id}
+                      onClick={async () => {
+                        setActing(n.id);
+                        try {
+                          await revokeNucId(n.id);
+                          await qc.invalidateQueries({ queryKey: ['admin-nuc-ids'] });
+                          toast('Staff ID revoked', 'success');
+                        } catch {
+                          toast('Could not revoke staff ID', 'error');
+                        } finally {
+                          setActing(null);
+                        }
                       }}
                     >
                       Revoke
@@ -484,11 +572,19 @@ export default function AdminDashboard() {
                   )}
                   <button
                     type="button"
-                    className="rounded p-2 text-error hover:bg-card-hover"
-                    onClick={() => {
-                      deleteNucId(n.id);
-                      qc.invalidateQueries({ queryKey: ['admin-nuc-ids'] });
-                      toast('Staff ID deleted', 'success');
+                    className="rounded p-2 text-error hover:bg-card-hover disabled:opacity-50"
+                    disabled={acting === n.id}
+                    onClick={async () => {
+                      setActing(n.id);
+                      try {
+                        await deleteNucId(n.id);
+                        await qc.invalidateQueries({ queryKey: ['admin-nuc-ids'] });
+                        toast('Staff ID deleted', 'success');
+                      } catch {
+                        toast('Could not delete staff ID', 'error');
+                      } finally {
+                        setActing(null);
+                      }
                     }}
                   >
                     <Trash2 className="h-4 w-4" />

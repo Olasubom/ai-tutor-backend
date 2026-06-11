@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom';
-import { FileText, LayoutDashboard, LogOut, Settings } from 'lucide-react';
+import { FileText, LayoutDashboard, LogOut, Settings, Users } from 'lucide-react';
 import { Sidebar, type NavItem } from './Sidebar';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -9,6 +9,7 @@ export function AdminShell() {
 
   const nav: NavItem[] = [
     { to: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
+    { to: '/admin/users', label: 'Users', icon: <Users className="h-4 w-4" /> },
     { to: '/admin/materials', label: 'Materials', icon: <FileText className="h-4 w-4" /> },
   ];
 
