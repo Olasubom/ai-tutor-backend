@@ -4,7 +4,7 @@ import { getKnowledgeState } from './knowledge';
 
 export async function ensureLecturerProfile(
   lecturerId: string,
-  body: { name: string; department_id: string; faculty_id?: string },
+  body: { name: string; department_id: string; college_id?: string },
 ) {
   const { data } = await apiClient.post(`/lecturer/ensure/${lecturerId}`, body);
   return data;

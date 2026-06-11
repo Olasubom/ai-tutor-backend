@@ -196,19 +196,19 @@ import { localPlatform } from './localPlatform';
 import type { AuthUser, Testimonial } from '@/types';
 import { apiClient as client } from './client';
 
-export const getFaculties = listColleges;
-export const addFaculty = async (name: string) => {
+export const getColleges = listColleges;
+export const addCollege = async (name: string) => {
   await createCollege(name);
 };
-export const removeFaculty = deleteCollege;
-export const updateFaculty = async (_id: string, _name: string) => {
+export const removeCollege = deleteCollege;
+export const updateCollege = async (_id: string, _name: string) => {
   /* College rename not supported by API yet */
 };
 export const getNucIds = listNucIds;
 export const addNucId = async (body: {
   staff_id: string;
   label?: string;
-  faculty_id?: string;
+  college_id?: string;
   department_id?: string;
   college?: string;
   department?: string;
@@ -217,7 +217,7 @@ export const addNucId = async (body: {
   const depts = await listDepartments();
   const college =
     body.college ??
-    colleges.find((c) => c.id === body.faculty_id)?.name ??
+    colleges.find((c) => c.id === body.college_id)?.name ??
     '';
   const department =
     body.department ?? depts.find((d) => d.id === body.department_id)?.name ?? '';

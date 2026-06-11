@@ -41,9 +41,7 @@ export default function LecturerRegister() {
     enabled: !!activeCollegeId,
   });
 
-  const filteredDepartments = departments.filter(
-    (d) => d.college_id === activeCollegeId || d.faculty_id === activeCollegeId,
-  );
+  const filteredDepartments = departments.filter((d) => d.college_id === activeCollegeId);
 
   const {
     register,
@@ -140,7 +138,7 @@ export default function LecturerRegister() {
                   const id = e.target.value;
                   setCollegeId(id);
                   setValue('college', id);
-                  const firstDept = departments.find((d) => d.college_id === id || d.faculty_id === id);
+                  const firstDept = departments.find((d) => d.college_id === id);
                   setValue('department', firstDept?.id ?? '');
                 },
               })}

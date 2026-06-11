@@ -18,7 +18,7 @@ export function LecturerShell() {
     ensureLecturerProfile(lecturerId, {
       name: user.name,
       department_id: '',
-      faculty_id: '',
+      college_id: '',
     }).catch(() => {
       /* backend may be offline */
     });

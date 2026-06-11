@@ -4,8 +4,8 @@
  */
 import type {
   AuthUser,
+  College,
   Department,
-  Faculty,
   NucIdRecord,
   OnboardingData,
   Testimonial,
@@ -19,7 +19,7 @@ const KEYS = {
   users: 'aitutor_users',
   passwords: 'aitutor_passwords',
   resetCodes: 'aitutor_reset_codes',
-  faculties: 'aitutor_faculties',
+  colleges: 'aitutor_colleges',
   departments: 'aitutor_departments',
   courses: 'aitutor_courses',
   nucIds: 'aitutor_nuc_ids',
@@ -85,13 +85,13 @@ const DEFAULT_TESTIMONIALS: Testimonial[] = [
   },
 ];
 
-function dedupeFaculties() {
-  const faculties = read<Faculty[]>(KEYS.faculties, []);
-  const seen = new Map<string, Faculty>();
-  for (const f of faculties) {
-    if (!seen.has(f.id)) seen.set(f.id, f);
+function dedupeColleges() {
+  const colleges = read<College[]>(KEYS.colleges, []);
+  const seen = new Map<string, College>();
+  for (const college of colleges) {
+    if (!seen.has(college.id)) seen.set(college.id, college);
   }
-  write(KEYS.faculties, Array.from(seen.values()));
+  write(KEYS.colleges, Array.from(seen.values()));
 }
 
 function read<T>(key: string, fallback: T): T {
@@ -109,14 +109,14 @@ function write<T>(key: string, value: T) {
 }
 
 function seedIfEmpty() {
-  const faculties = read<Faculty[]>(KEYS.faculties, []);
-  if (faculties.length === 0) {
-    const f1 = { id: 'fac_eng', name: 'Faculty of Engineering' };
-    const f2 = { id: 'fac_sci', name: 'Faculty of Science' };
-    write(KEYS.faculties, [f1, f2]);
+  const colleges = read<College[]>(KEYS.colleges, []);
+  if (colleges.length === 0) {
+    const c1 = { id: 'col_eng', name: 'College of Engineering' };
+    const c2 = { id: 'col_sci', name: 'College of Science' };
+    write(KEYS.colleges, [c1, c2]);
 
-    const d1 = { id: 'dept_csc', name: 'Computer Science', faculty_id: f1.id, course_count: 4 };
-    const d2 = { id: 'dept_mat', name: 'Mathematics', faculty_id: f2.id, course_count: 2 };
+    const d1 = { id: 'dept_csc', name: 'Computer Science', college_id: c1.id, course_count: 4 };
+    const d2 = { id: 'dept_mat', name: 'Mathematics', college_id: c2.id, course_count: 2 };
     write(KEYS.departments, [d1, d2]);
 
     write(KEYS.courses, [] as UniversityCourse[]);
@@ -127,19 +127,21 @@ function seedIfEmpty() {
     write(KEYS.nucIds, [
       {
         id: 'nuc_demo_1',
+        nuc_staff_id: 'NUC-2024-001',
         staff_id: 'NUC-2024-001',
         label: 'Demo Lecturer ID',
-        faculty_id: 'fac_eng',
-        department_id: 'dept_csc',
+        college: 'College of Engineering',
+        department: 'Computer Science',
         status: 'active',
         created_at: new Date().toISOString(),
       },
       {
         id: 'nuc_demo_2',
+        nuc_staff_id: 'NUC-2024-002',
         staff_id: 'NUC-2024-002',
         label: 'Demo Lecturer ID (Science)',
-        faculty_id: 'fac_sci',
-        department_id: 'dept_mat',
+        college: 'College of Science',
+        department: 'Mathematics',
         status: 'active',
         created_at: new Date().toISOString(),
       },
@@ -154,7 +156,7 @@ function seedIfEmpty() {
 
 function platformInit() {
   seedIfEmpty();
-  dedupeFaculties();
+  dedupeColleges();
 }
 
 platformInit();
@@ -250,7 +252,7 @@ export const localPlatform = {
     name: string;
     email: string;
     staff_id: string;
-    faculty_id: string;
+    college_id: string;
     department_id: string;
     password: string;
   }): { user: AuthUser } {
@@ -273,7 +275,7 @@ export const localPlatform = {
       name: data.name,
       email: data.email,
       staff_id: data.staff_id,
-      faculty_id: data.faculty_id,
+      college_id: data.college_id,
       department_id: data.department_id,
       status: 'pending_verification' as AccountStatus,
     };
@@ -357,12 +359,12 @@ export const localPlatform = {
     return all[userId] ?? null;
   },
 
-  getFaculties(): Faculty[] {
-    const faculties = read<Faculty[]>(KEYS.faculties, []);
+  getColleges(): College[] {
+    const colleges = read<College[]>(KEYS.colleges, []);
     const seen = new Set<string>();
-    return faculties.filter((f) => {
-      if (seen.has(f.id)) return false;
-      seen.add(f.id);
+    return colleges.filter((college) => {
+      if (seen.has(college.id)) return false;
+      seen.add(college.id);
       return true;
     });
   },
@@ -424,19 +426,19 @@ export const localPlatform = {
     write(KEYS.courses, read<UniversityCourse[]>(KEYS.courses, []).filter((c) => c.id !== id));
   },
 
-  saveFaculty(name: string, id?: string) {
-    const faculties = read<Faculty[]>(KEYS.faculties, []);
+  saveCollege(name: string, id?: string) {
+    const colleges = read<College[]>(KEYS.colleges, []);
     if (id) {
-      const idx = faculties.findIndex((f) => f.id === id);
-      if (idx >= 0) faculties[idx].name = name;
+      const idx = colleges.findIndex((c) => c.id === id);
+      if (idx >= 0) colleges[idx].name = name;
     } else {
-      faculties.push({ id: generateId('fac'), name });
+      colleges.push({ id: generateId('col'), name });
     }
-    write(KEYS.faculties, faculties);
+    write(KEYS.colleges, colleges);
   },
 
-  deleteFaculty(id: string) {
-    write(KEYS.faculties, read<Faculty[]>(KEYS.faculties, []).filter((f) => f.id !== id));
+  deleteCollege(id: string) {
+    write(KEYS.colleges, read<College[]>(KEYS.colleges, []).filter((c) => c.id !== id));
   },
 
   getNucIds(): NucIdRecord[] {
