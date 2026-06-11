@@ -33,7 +33,10 @@ export async function deleteDepartment(id: string): Promise<void> {
 
 export async function listCourses(departmentId?: string, level?: string): Promise<UniversityCourse[]> {
   const { data } = await apiClient.get<Array<Record<string, unknown>>>('/admin/courses', {
-    params: { department_id: departmentId, level },
+    params: {
+      ...(departmentId ? { department_id: departmentId } : {}),
+      ...(level ? { level } : {}),
+    },
   });
   return (data ?? []).map(mapCourse);
 }
@@ -140,12 +143,51 @@ export async function rejectLecturer(id: string): Promise<void> {
 }
 
 export async function listStudents(params?: { department?: string; college?: string; level?: string }) {
-  const { data } = await apiClient.get('/admin/students', { params });
-  return data;
+  const { data } = await apiClient.get<AdminStudent[]>('/admin/students', { params });
+  return data ?? [];
 }
 
 export async function suspendStudent(id: string): Promise<void> {
   await apiClient.patch(`/admin/students/${id}/suspend`);
+}
+
+export async function deleteStudent(id: string): Promise<void> {
+  await apiClient.delete(`/admin/students/${id}`);
+}
+
+export interface AdminStudent {
+  user_id: string;
+  name: string;
+  email: string;
+  department?: string | null;
+  college?: string | null;
+  academic_level?: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AdminLecturer {
+  user_id: string;
+  name: string;
+  email: string;
+  nuc_staff_id?: string | null;
+  college?: string | null;
+  department?: string | null;
+  lecturer_status?: string | null;
+  is_active: boolean;
+  is_verified: boolean;
+  created_at: string;
+}
+
+export async function listLecturers(status?: string): Promise<AdminLecturer[]> {
+  const { data } = await apiClient.get<AdminLecturer[]>('/admin/lecturers', {
+    params: status ? { status } : undefined,
+  });
+  return data ?? [];
+}
+
+export async function deleteLecturer(id: string): Promise<void> {
+  await apiClient.delete(`/admin/lecturers/${id}`);
 }
 
 // ——— Compatibility aliases for admin Dashboard ———

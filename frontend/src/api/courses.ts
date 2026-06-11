@@ -15,7 +15,10 @@ export async function fetchDepartments(collegeId?: string): Promise<Department[]
 
 export async function fetchCourses(departmentId?: string, level?: string): Promise<UniversityCourse[]> {
   const { data } = await apiClient.get<Array<Record<string, unknown>>>('/admin/courses', {
-    params: { department_id: departmentId, level },
+    params: {
+      ...(departmentId ? { department_id: departmentId } : {}),
+      ...(level ? { level } : {}),
+    },
   });
   return (data ?? []).map((c) => ({
     id: String(c.id),

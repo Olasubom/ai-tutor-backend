@@ -80,3 +80,27 @@ def send_password_reset_email(*, to_email: str, code: str, name: Optional[str] =
     </div>
     """
     return send_email(to_email=to_email, subject=subject, text_body=text_body, html_body=html_body)
+
+
+def send_admin_password_reset_email(*, to_email: str, code: str, name: Optional[str] = None) -> bool:
+    greeting = f"Hi {name}," if name else "Hi,"
+    subject = "Your AITutor admin password reset code"
+    text_body = (
+        f"{greeting}\n\n"
+        f"Your admin verification code is: {code}\n\n"
+        "This code expires in 10 minutes. If you did not request an admin password reset, "
+        "contact your platform administrator immediately.\n\n"
+        "— AITutor Admin"
+    )
+    html_body = f"""
+    <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;color:#1f2937">
+      <p>{greeting}</p>
+      <p>Use this one-time verification code to reset your <strong>admin</strong> password:</p>
+      <p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#2563eb">{code}</p>
+      <p style="font-size:14px;color:#6b7280">This code expires in <strong>10 minutes</strong>.</p>
+      <p style="font-size:13px;color:#9ca3af">If you did not request this, contact your platform administrator.</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0" />
+      <p style="font-size:12px;color:#9ca3af">AITutor — Admin Portal</p>
+    </div>
+    """
+    return send_email(to_email=to_email, subject=subject, text_body=text_body, html_body=html_body)

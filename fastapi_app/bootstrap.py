@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from sqlalchemy import select
@@ -24,7 +25,7 @@ def run_migrations() -> None:
         return
     try:
         subprocess.run(
-            ["alembic", "upgrade", "head"],
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
             cwd=str(_ROOT),
             check=False,
             capture_output=True,

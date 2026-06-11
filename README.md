@@ -79,6 +79,44 @@ Body:
 
 This endpoint disables itself after the first admin account is created.
 
+### Changing admin email or password locally
+
+**Password (recommended options):**
+
+1. **Forgot password flow** — On `/admin/login`, enter your admin email, click **Forgot password?**, and complete the email verification steps.
+2. **CLI (no email required):**
+
+```bash
+ADMIN_EMAIL=admin@aitutor.edu.ng ADMIN_PASSWORD=YourNewPassword123 python -m fastapi_app.create_admin
+```
+
+If the account already exists, this updates the password and keeps the admin role.
+
+**Email:**
+
+Startup seeding only sets `ADMIN_EMAIL` when **no admin exists yet**. To change an existing admin email:
+
+```powershell
+$env:ADMIN_EMAIL="your-real@gmail.com"
+$env:ADMIN_PASSWORD="YourNewPassword123"
+$env:ADMIN_REPLACE_EMAIL="true"
+python -m fastapi_app.create_admin
+
+or
+cd c:\Users\USER\Desktop\OLA\PROJECT\ai-tutor-backend
+
+$env:ADMIN_EMAIL="olasubomiadebayo4@gmail.com"
+$env:ADMIN_PASSWORD="YourNewPassword123"
+$env:ADMIN_REPLACE_EMAIL="true"
+$env:ADMIN_NAME="duke"
+
+.\venv\Scripts\python.exe -m fastapi_app.create_admin --replace-email
+```
+
+PowerShell env vars take precedence over `agency/.env`. Optional: set `ADMIN_OLD_EMAIL=admin@aitutor.edu` if you have multiple admins and want to pick which one to update.
+
+Also update `ADMIN_EMAIL=` in `agency/.env` so future docs and tooling stay in sync.
+
 Health endpoints:
 - `GET /healthz` — liveness
 - `GET /readyz` — readiness (DB + runtime checks)

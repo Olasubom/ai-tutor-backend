@@ -16,6 +16,9 @@ from pydantic import BaseModel, EmailStr, Field
 
 from fastapi_app.auth.google_oauth import verify_google_credential
 from fastapi_app.auth.schemas import (
+    AdminForgotPasswordRequest,
+    AdminResetPasswordRequest,
+    AdminVerifyResetCodeRequest,
     BootstrapRequest,
     ForgotPasswordRequest,
     GoogleAuthRequest,
@@ -37,6 +40,7 @@ from fastapi_app.auth.utils import (
 )
 from fastapi_app.database import get_db
 from fastapi_app.services import auth_service as legacy_auth
+from fastapi_app.services import admin_password_service
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -370,4 +374,34 @@ def reset_password(payload: ResetPasswordRequest) -> dict:
         email=str(payload.email),
         code=payload.code,
         new_password=payload.new_password,
+    )
+
+
+@router.post("/admin/forgot-password")
+def admin_forgot_password(
+    payload: AdminForgotPasswordRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Send a one-time verification code to the admin's registered email."""
+    return admin_password_service.request_admin_password_reset(str(payload.email), db)
+
+
+@router.post("/admin/verify-reset-code")
+def admin_verify_reset_code(payload: AdminVerifyResetCodeRequest) -> dict:
+    """Validate the admin reset code before showing the new-password step."""
+    admin_password_service.verify_admin_reset_code(str(payload.email), payload.code)
+    return {"ok": True, "message": "Verification code accepted."}
+
+
+@router.post("/admin/reset-password")
+def admin_reset_password(
+    payload: AdminResetPasswordRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Reset admin password after email verification."""
+    return admin_password_service.reset_admin_password_with_code(
+        email=str(payload.email),
+        code=payload.code,
+        new_password=payload.new_password,
+        db=db,
     )

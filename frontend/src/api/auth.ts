@@ -68,6 +68,23 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
   await apiClient.post('/auth/reset-password', { email, code, new_password: newPassword });
 }
 
+export async function requestAdminPasswordResetCode(email: string) {
+  const { data } = await apiClient.post<{
+    message: string;
+    email_sent: boolean;
+    masked_email: string;
+  }>('/auth/admin/forgot-password', { email });
+  return data;
+}
+
+export async function verifyAdminResetCode(email: string, code: string) {
+  await apiClient.post('/auth/admin/verify-reset-code', { email, code });
+}
+
+export async function resetAdminPasswordWithCode(email: string, code: string, newPassword: string) {
+  await apiClient.post('/auth/admin/reset-password', { email, code, new_password: newPassword });
+}
+
 export async function loginWithGoogle(credential: string): Promise<TokenResponse> {
   const { data } = await apiClient.post<TokenResponse>('/auth/google', { credential });
   return data;
