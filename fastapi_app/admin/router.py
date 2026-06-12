@@ -34,7 +34,7 @@ class CourseCreate(BaseModel):
     department_id: str
     level: str
     credit_units: int = 3
-    semester: str = "First"
+    semester: str = "Both"
     course_type: str = "Compulsory"
     description: Optional[str] = None
 
@@ -64,10 +64,20 @@ def _course_dict(c: Course) -> dict:
         "department_id": c.department_id,
         "level": c.level,
         "credit_units": c.credit_units,
-        "semester": c.semester,
+        "semester": c.semester or "Both",
         "course_type": c.course_type,
         "description": c.description,
     }
+
+
+def _normalize_level(level: Optional[str]) -> Optional[str]:
+    if level is None or str(level).strip() == "":
+        return None
+    level_clean = str(level).replace(" Level", "").replace("level", "").strip()
+    try:
+        return str(int(level_clean))
+    except (ValueError, TypeError):
+        return str(level).strip()
 
 
 @router.post("/colleges")
@@ -174,11 +184,12 @@ def create_course(
     if not db.get(Department, payload.department_id):
         raise HTTPException(status_code=404, detail="Department not found")
     code = payload.course_code.strip().upper()
+    level = _normalize_level(payload.level) or payload.level.strip()
     existing = db.scalar(
         select(Course).where(
             Course.course_code == code,
             Course.department_id == payload.department_id,
-            Course.level == payload.level,
+            Course.level == level,
         )
     )
     if existing:
@@ -190,7 +201,7 @@ def create_course(
         course_code=code,
         course_title=payload.course_title.strip(),
         department_id=payload.department_id,
-        level=payload.level,
+        level=level,
         credit_units=payload.credit_units,
         semester=payload.semester,
         course_type=payload.course_type,
@@ -211,8 +222,9 @@ def list_courses(
     q = select(Course)
     if department_id:
         q = q.where(Course.department_id == department_id)
-    if level:
-        q = q.where(Course.level == level)
+    normalized_level = _normalize_level(level)
+    if normalized_level is not None:
+        q = q.where(Course.level == normalized_level)
     rows = db.scalars(q.order_by(Course.course_code)).all()
     return [_course_dict(c) for c in rows]
 
@@ -272,7 +284,7 @@ async def bulk_import_courses(
             department_id=department_id,
             level=str(row.get("level") or "200"),
             credit_units=int(row.get("credit_units") or row.get("units") or 3),
-            semester=row.get("semester") or "First",
+            semester=row.get("semester") or "Both",
             course_type=row.get("course_type") or row.get("type") or "Compulsory",
             description=row.get("description"),
         )

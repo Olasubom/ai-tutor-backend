@@ -1,5 +1,7 @@
 import { apiClient } from './client';
 import type { College, Department, NucIdRecord, UniversityCourse } from '@/types';
+import { normalizeCourseLevel } from '@/lib/courseLevel';
+import { normalizeSemester } from '@/lib/courseSemester';
 
 export async function listColleges(): Promise<College[]> {
   const { data } = await apiClient.get<College[]>('/admin/colleges');
@@ -32,10 +34,11 @@ export async function deleteDepartment(id: string): Promise<void> {
 }
 
 export async function listCourses(departmentId?: string, level?: string): Promise<UniversityCourse[]> {
+  const normalizedLevel = normalizeCourseLevel(level);
   const { data } = await apiClient.get<Array<Record<string, unknown>>>('/admin/courses', {
     params: {
       ...(departmentId ? { department_id: departmentId } : {}),
-      ...(level ? { level } : {}),
+      ...(normalizedLevel ? { level: normalizedLevel } : {}),
     },
   });
   return (data ?? []).map(mapCourse);
@@ -49,7 +52,7 @@ function mapCourse(c: Record<string, unknown>): UniversityCourse {
     course_title: String(c.course_title),
     level: String(c.level),
     units: Number(c.credit_units ?? 0),
-    semester: (c.semester as UniversityCourse['semester']) ?? 'First',
+    semester: normalizeSemester(c.semester ? String(c.semester) : undefined),
     type: (c.course_type as UniversityCourse['type']) ?? 'Compulsory',
     description: c.description ? String(c.description) : undefined,
   };

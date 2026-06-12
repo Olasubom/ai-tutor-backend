@@ -35,7 +35,10 @@ import {
 import { Select } from '@/components/ui/Select';
 import { useAuth } from '@/hooks/useAuth';
 import { useToastStore } from '@/components/ui/Toast';
+import { COURSE_LEVEL_OPTIONS } from '@/lib/courseLevel';
+import { SEMESTER_FORM_OPTIONS } from '@/lib/courseSemester';
 import type { Testimonial, TestimonialPanel } from '@/types';
+import { SemesterBadge } from '@/components/ui/SemesterBadge';
 
 const PANEL_LABELS: Record<TestimonialPanel, string> = {
   login: 'Login page',
@@ -58,6 +61,7 @@ export default function AdminDashboard() {
   const [courseLevel, setCourseLevel] = useState('100');
   const [newCourseCode, setNewCourseCode] = useState('');
   const [newCourseTitle, setNewCourseTitle] = useState('');
+  const [newCourseSemester, setNewCourseSemester] = useState<'First' | 'Second' | 'Both'>('First');
   const [isSubmittingCourse, setIsSubmittingCourse] = useState(false);
   const [newStaffId, setNewStaffId] = useState('');
   const [newStaffLabel, setNewStaffLabel] = useState('');
@@ -229,12 +233,13 @@ export default function AdminDashboard() {
         course_title: newCourseTitle.trim(),
         level,
         units: 3,
-        semester: 'First',
+        semester: newCourseSemester,
         type: 'Compulsory',
       });
       setCourseLevel(level);
       setNewCourseCode('');
       setNewCourseTitle('');
+      setNewCourseSemester('First');
       await qc.invalidateQueries({ queryKey: ['admin-courses'] });
       await qc.invalidateQueries({ queryKey: ['admin-departments'] });
       toast('Course added successfully', 'success');
@@ -432,7 +437,7 @@ export default function AdminDashboard() {
             {courseRows.length} course{courseRows.length !== 1 ? 's' : ''} at {courseLevel} Level
           </p>
         )}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Select
             label="Department"
             value={courseDept}
@@ -449,7 +454,7 @@ export default function AdminDashboard() {
             onChange={(e) => setCourseLevel(e.target.value)}
             options={[
               { value: '', label: 'All levels' },
-              ...['100', '200', '300', '400', '500'].map((l) => ({ value: l, label: `${l} Level` })),
+              ...COURSE_LEVEL_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label })),
             ]}
           />
           <Input
@@ -463,6 +468,12 @@ export default function AdminDashboard() {
             placeholder="Operating Systems"
             value={newCourseTitle}
             onChange={(e) => setNewCourseTitle(e.target.value)}
+          />
+          <Select
+            label="Semester"
+            value={newCourseSemester}
+            onChange={(e) => setNewCourseSemester(e.target.value as 'First' | 'Second' | 'Both')}
+            options={SEMESTER_FORM_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
           />
         </div>
         <Button
@@ -485,9 +496,12 @@ export default function AdminDashboard() {
           ) : (
             courseRows.map((c) => (
               <div key={c.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
-                <div>
-                  <span className="font-medium">{c.course_code}</span>
-                  <span className="ml-2 text-[13px] text-text-muted">
+                <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[14px] font-semibold">{c.course_code}</span>
+                    <SemesterBadge semester={c.semester} />
+                  </div>
+                  <span className="truncate text-[13px] text-text-muted">
                     {c.course_title} · Level {c.level}
                   </span>
                 </div>

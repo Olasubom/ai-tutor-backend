@@ -1,5 +1,7 @@
 import { apiClient } from './client';
 import type { College, Department, UniversityCourse } from '@/types';
+import { normalizeCourseLevel } from '@/lib/courseLevel';
+import { normalizeSemester } from '@/lib/courseSemester';
 
 export async function fetchColleges(): Promise<College[]> {
   const { data } = await apiClient.get<College[]>('/admin/colleges');
@@ -14,10 +16,11 @@ export async function fetchDepartments(collegeId?: string): Promise<Department[]
 }
 
 export async function fetchCourses(departmentId?: string, level?: string): Promise<UniversityCourse[]> {
+  const normalizedLevel = normalizeCourseLevel(level);
   const { data } = await apiClient.get<Array<Record<string, unknown>>>('/admin/courses', {
     params: {
       ...(departmentId ? { department_id: departmentId } : {}),
-      ...(level ? { level } : {}),
+      ...(normalizedLevel ? { level: normalizedLevel } : {}),
     },
   });
   return (data ?? []).map((c) => ({
@@ -27,7 +30,7 @@ export async function fetchCourses(departmentId?: string, level?: string): Promi
     course_title: String(c.course_title),
     level: String(c.level),
     units: Number(c.credit_units ?? c.units ?? 0),
-    semester: (c.semester as UniversityCourse['semester']) ?? 'First',
+    semester: normalizeSemester(c.semester ? String(c.semester) : undefined),
     type: (c.course_type as UniversityCourse['type']) ?? 'Compulsory',
     description: c.description ? String(c.description) : undefined,
   }));
@@ -49,7 +52,7 @@ export async function createCourse(data: Omit<UniversityCourse, 'id'>) {
     course_code: data.course_code,
     course_title: data.course_title,
     department_id: data.department_id,
-    level: data.level,
+    level: normalizeCourseLevel(data.level) ?? data.level,
     credit_units: data.units,
     semester: data.semester,
     course_type: data.type,

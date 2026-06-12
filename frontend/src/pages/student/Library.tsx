@@ -6,17 +6,44 @@ import { Card } from '@/components/ui/Card';
 import { Skeleton, ResourceCardSkeleton } from '@/components/ui/Skeleton';
 import { getRecommendations } from '@/api/recommendations';
 import { useAuth } from '@/hooks/useAuth';
-import { useKnowledge } from '@/hooks/useStudent';
+import { useLearnerProfile } from '@/hooks/useStudent';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatResourceType, matchesResourceFilter, resourceTypePillClass } from '@/lib/resourceTypes';
 import { cn } from '@/lib/utils';
+import type { Recommendation } from '@/types';
 
 const filters = ['All Resources', 'Video Lectures', 'E-Books', 'Interactive Quizzes'];
+
+function getMasteryPercent(profileData: ReturnType<typeof useLearnerProfile>['data']): number | null {
+  const profile = profileData?.profile;
+  if (!profile) return null;
+
+  if (typeof profile.overall_mastery_percentage === 'number' && profile.overall_mastery_percentage > 0) {
+    return Math.round(profile.overall_mastery_percentage);
+  }
+
+  const topicMastery = profile.topic_mastery ?? {};
+  const entries = Object.values(topicMastery);
+  if (entries.length > 0) {
+    const avg = entries.reduce((sum, topic) => sum + (topic.p_l ?? 0), 0) / entries.length;
+    const pct = Math.round(avg * 100);
+    return pct > 0 ? pct : null;
+  }
+
+  return null;
+}
+
+function getMatchPercent(item: Recommendation): number | null {
+  if (typeof item.score !== 'number' || !Number.isFinite(item.score)) return null;
+  const pct = item.score <= 1 ? item.score * 100 : item.score;
+  if (pct <= 0) return null;
+  return Math.round(pct);
+}
 
 export default function Library() {
   const navigate = useNavigate();
   const { learnerId } = useAuth();
-  const knowledge = useKnowledge(learnerId);
+  const profile = useLearnerProfile(learnerId);
   const [active, setActive] = useState('All Resources');
   const { data, isLoading } = useQuery({
     queryKey: ['library', learnerId],
@@ -30,12 +57,7 @@ export default function Library() {
     matchesResourceFilter(item.modality, item.source_type, active),
   );
 
-  const overallMastery = useMemo(() => {
-    const subjects = knowledge.data?.subjects ?? [];
-    if (subjects.length === 0) return null;
-    const avg = subjects.reduce((sum, subject) => sum + subject.mastery, 0) / subjects.length;
-    return Math.round(avg);
-  }, [knowledge.data?.subjects]);
+  const masteryPercent = useMemo(() => getMasteryPercent(profile.data), [profile.data]);
 
   return (
     <div className="space-y-6">
@@ -46,14 +68,21 @@ export default function Library() {
             Personalized resources ranked by mastery match and learning gaps.
           </p>
         </div>
-        <Card className="p-4">
-          <div className="label-caps text-text-muted">Global Mastery Match</div>
-          {knowledge.isLoading ? (
-            <Skeleton className="mt-2 h-8 w-16" />
-          ) : overallMastery === null ? (
-            <div className="mt-2 text-[18px] font-semibold text-text-muted">Not yet calculated</div>
+        <Card className="p-4 text-right">
+          <div className="label-caps text-text-muted">Global Mastery</div>
+          {profile.isLoading ? (
+            <Skeleton className="ml-auto mt-2 h-8 w-24" />
+          ) : masteryPercent === null ? (
+            <div className="mt-2 text-[14px] text-text-muted">Complete a quiz to see your mastery</div>
           ) : (
-            <div className="stat-number text-teal">{overallMastery}%</div>
+            <div
+              className={cn(
+                'mt-2 text-[32px] font-extrabold tracking-tight',
+                masteryPercent >= 70 ? 'text-teal' : masteryPercent >= 40 ? 'text-warning' : 'text-primary',
+              )}
+            >
+              {masteryPercent}%
+            </div>
           )}
         </Card>
       </div>
@@ -91,10 +120,10 @@ export default function Library() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {items.map((item, i) => {
             const typeLabel = formatResourceType(item.modality ?? item.source_type ?? 'resource');
-            const matchPct = item.score != null ? Math.round(item.score * 100) : null;
+            const matchPct = getMatchPercent(item);
             return (
               <Card key={item.item_id} className={cn('relative p-6', i === 0 && 'md:col-span-2')}>
-                {matchPct != null && (
+                {matchPct != null && matchPct >= 40 && (
                   <span className="absolute right-4 top-4 rounded-full px-2 py-0.5 text-[11px] font-bold text-primary">
                     {matchPct}% MATCH
                   </span>
