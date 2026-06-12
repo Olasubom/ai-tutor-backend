@@ -1,5 +1,7 @@
 import { apiClient } from './client';
 import type { UniversityCourse } from '@/types';
+import { normalizeCourseLevel } from '@/lib/courseLevel';
+import { normalizeSemester } from '@/lib/courseSemester';
 
 function mapCourse(c: Record<string, unknown>): UniversityCourse {
   return {
@@ -9,15 +11,16 @@ function mapCourse(c: Record<string, unknown>): UniversityCourse {
     course_title: String(c.course_title),
     level: String(c.level),
     units: Number(c.credit_units ?? 0),
-    semester: (c.semester as UniversityCourse['semester']) ?? 'First',
+    semester: normalizeSemester(c.semester ? String(c.semester) : undefined),
     type: (c.course_type as UniversityCourse['type']) ?? 'Compulsory',
     description: c.description ? String(c.description) : undefined,
   };
 }
 
 export async function fetchAdminCourses(departmentId: string, level: string): Promise<UniversityCourse[]> {
+  const normalizedLevel = normalizeCourseLevel(level) ?? level;
   const { data } = await apiClient.get<Record<string, unknown>[]>('/admin/courses', {
-    params: { department_id: departmentId, level },
+    params: { department_id: departmentId, level: normalizedLevel },
   });
   return (data ?? []).map(mapCourse);
 }

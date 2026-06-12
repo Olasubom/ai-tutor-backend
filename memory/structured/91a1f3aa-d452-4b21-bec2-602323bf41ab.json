@@ -1,0 +1,88 @@
+{
+  "learner_id": "91a1f3aa-d452-4b21-bec2-602323bf41ab",
+  "name": "Adebayo mubarak olasubomi",
+  "topic_mastery": {},
+  "knowledge_state_summary": {
+    "weak_topics": [],
+    "strong_topics": [],
+    "overall_mastery_percentage": 0
+  },
+  "total_study_hours": 0,
+  "modules_completed": 0,
+  "current_streak": 0,
+  "onboarding_complete": true,
+  "courses": [
+    "ef335587-bb1c-4691-9ba1-9dcfa18e048c",
+    "9e9b48c1-cc9f-4e4f-9780-b34a6d97ff34",
+    "ec0e3dc8-cd55-4b9a-9491-8227fed67e86",
+    "c3db37b5-52d4-4fd2-bbd9-11c50e0f59a3",
+    "d8b5576c-04fb-4a80-9a4a-c591e97a02af",
+    "4b8cb42e-d003-41ef-9675-aebf44940e40",
+    "1b550af0-cdec-4eac-a088-33c48abbcd00",
+    "7999dbf1-e503-467e-a983-5d3b389710e5",
+    "8b609b49-8b22-4dc6-9e11-4a78dc086aa5",
+    "80aecea0-5d23-42fe-a0be-6a1570d5d40f",
+    "5a213c2a-42d9-4e69-b5a9-02057b07d1d4"
+  ],
+  "subject_ratings": [
+    {
+      "topic": "Law of Contract I",
+      "proficiency": "comfortable"
+    },
+    {
+      "topic": "Law of Contract II",
+      "proficiency": "familiar"
+    },
+    {
+      "topic": "Entrepreneurship and Innovation",
+      "proficiency": "no_knowledge"
+    },
+    {
+      "topic": "Fountain University Fiqh II",
+      "proficiency": "comfortable"
+    },
+    {
+      "topic": "Citizenship, Peace and Conflict Resolution",
+      "proficiency": "familiar"
+    },
+    {
+      "topic": "Food and Drug Law I",
+      "proficiency": "comfortable"
+    },
+    {
+      "topic": "Food and Drug Law II",
+      "proficiency": "familiar"
+    },
+    {
+      "topic": "Constitutional Law I",
+      "proficiency": "no_knowledge"
+    },
+    {
+      "topic": "Constitutional Law II",
+      "proficiency": "familiar"
+    },
+    {
+      "topic": "Nigerian Legal System I",
+      "proficiency": "comfortable"
+    },
+    {
+      "topic": "Nigerian Legal System II",
+      "proficiency": "no_knowledge"
+    }
+  ],
+  "preferences": {
+    "weekly_hours": 23,
+    "content_formats": [
+      "video",
+      "interactive",
+      "mixed",
+      "text"
+    ],
+    "primary_objective": "Academic Excellence"
+  },
+  "updated_at": "2026-06-12T09:20:11.842759+00:00",
+  "department": "Department of Public & International Law",
+  "college": "College of Law",
+  "academic_level": "200",
+  "institution": "Fountain university"
+}

@@ -2,12 +2,15 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
-import { SubjectPill } from '@/components/onboarding/SubjectPill';
+import { CourseSelectItem } from '@/components/courses/CourseSelectItem';
+import { SemesterFilterPills } from '@/components/courses/SemesterFilterPills';
 import { fetchAdminCourses } from '@/api/adminCourses';
+import { COURSE_LEVEL_OPTIONS } from '@/lib/courseLevel';
+import { filterCoursesBySemester, type SemesterFilter } from '@/lib/courseSemester';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 
-const LEVELS = ['100', '200', '300', '400', '500'];
+const LEVELS = COURSE_LEVEL_OPTIONS.map((opt) => opt.value);
 
 export default function Step2CurriculumFocus() {
   const navigate = useNavigate();
@@ -27,18 +30,20 @@ export default function Step2CurriculumFocus() {
   const [level, setLevel] = useState('200');
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
   const [showNoCourseWarning, setShowNoCourseWarning] = useState(false);
+  const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('All');
 
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ['admin-courses', departmentId, level],
     queryFn: () => fetchAdminCourses(departmentId, level),
     enabled: !!departmentId && !!level,
   });
+  const filteredCourses = filterCoursesBySemester(courses, semesterFilter);
 
   const toggleCourse = (id: string) => {
     setSelectedCourses((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
   };
 
-  const selectAll = () => setSelectedCourses(courses.map((c) => c.id));
+  const selectAll = () => setSelectedCourses(filteredCourses.map((c) => c.id));
 
   const persistAndNavigate = () => {
     sessionStorage.setItem(
@@ -109,19 +114,20 @@ export default function Step2CurriculumFocus() {
               </button>
             </div>
           )}
-          <div className="mt-2 flex flex-wrap gap-2">
+          <SemesterFilterPills value={semesterFilter} onChange={setSemesterFilter} />
+          <div className="mt-3 space-y-2">
             {isLoading ? (
               <p className="text-[14px] text-text-muted">Loading courses...</p>
-            ) : courses.length === 0 ? (
+            ) : filteredCourses.length === 0 ? (
               <p className="text-[14px] text-text-secondary">
                 No courses have been added for this department and level yet. Please check back later or contact your
                 college administrator.
               </p>
             ) : (
-              courses.map((c) => (
-                <SubjectPill
+              filteredCourses.map((c) => (
+                <CourseSelectItem
                   key={c.id}
-                  label={`${c.course_code} · ${c.course_title}`}
+                  course={c}
                   selected={selectedCourses.includes(c.id)}
                   onClick={() => toggleCourse(c.id)}
                 />

@@ -8,15 +8,19 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Toggle } from '@/components/ui/Toggle';
-import { SubjectPill } from '@/components/onboarding/SubjectPill';
+import { CourseSelectItem } from '@/components/courses/CourseSelectItem';
+import { SemesterFilterPills } from '@/components/courses/SemesterFilterPills';
+import { SemesterBadge } from '@/components/ui/SemesterBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
 import { useToastStore } from '@/components/ui/Toast';
 import { patchProfile } from '@/api/profile';
 import { getMe } from '@/api/auth';
 import { onboardingStep2, onboardingStep4 } from '@/api/onboarding';
-import { fetchDepartments } from '@/api/courses';
+import { fetchCourses, fetchDepartments } from '@/api/courses';
 import { fetchAdminCourses } from '@/api/adminCourses';
+import { COURSE_LEVEL_OPTIONS } from '@/lib/courseLevel';
+import { filterCoursesBySemester, type SemesterFilter } from '@/lib/courseSemester';
 import {
   getNotificationPreferences,
   patchNotificationPreferences,
@@ -33,7 +37,6 @@ const FORMATS = [
 ];
 
 const OBJECTIVES = ['Professional Certification', 'Academic Excellence', 'Skill Acquisition & Hobby'];
-const LEVELS = ['100', '200', '300', '400', '500'];
 const ACADEMIC_LEVELS = [
   { value: 'foundation', label: '100 Level' },
   { value: 'developing', label: '200-300 Level' },
@@ -61,6 +64,7 @@ export default function Settings() {
   const [pickerDept, setPickerDept] = useState('');
   const [pickerLevel, setPickerLevel] = useState('200');
   const [pickerSelected, setPickerSelected] = useState<string[]>([]);
+  const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('All');
 
   const departmentsQ = useQuery({ queryKey: ['departments-settings'], queryFn: () => fetchDepartments() });
   const departments = departmentsQ.data ?? [];
@@ -69,6 +73,13 @@ export default function Settings() {
     queryFn: () => fetchAdminCourses(pickerDept, pickerLevel),
     enabled: courseModal && !!pickerDept,
   });
+  const deptCoursesQ = useQuery({
+    queryKey: ['dept-courses-all', pickerDept],
+    queryFn: () => fetchCourses(pickerDept),
+    enabled: tab === 'courses' && !!pickerDept,
+  });
+  const courseByCode = Object.fromEntries((deptCoursesQ.data ?? []).map((c) => [c.course_code, c]));
+  const filteredPickerCourses = filterCoursesBySemester(coursesQ.data ?? [], semesterFilter);
 
   const prefsQ = useQuery({
     queryKey: ['notification-prefs', learnerId],
@@ -204,21 +215,30 @@ export default function Settings() {
               />
             ) : (
               <div className="flex flex-wrap gap-2">
-                {enrolled.map((code) => (
-                  <span
-                    key={code}
-                    className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-[13px]"
-                  >
-                    {code}
-                    <button
-                      type="button"
-                      onClick={() => saveCourses(enrolled.filter((c) => c !== code))}
-                      className="text-text-muted hover:text-error"
+                {enrolled.map((code) => {
+                  const course = courseByCode[code];
+                  return (
+                    <div
+                      key={code}
+                      className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
                     >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
+                      <span className="text-[13px] font-semibold">{code}</span>
+                      {course && (
+                        <>
+                          <span className="max-w-[140px] truncate text-[13px] text-text-muted">{course.course_title}</span>
+                          <SemesterBadge semester={course.semester} />
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => saveCourses(enrolled.filter((c) => c !== code))}
+                        className="text-text-muted hover:text-error"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <Button variant="secondary" onClick={() => { setPickerSelected(enrolled); setCourseModal(true); }}>
@@ -302,15 +322,16 @@ export default function Settings() {
             onChange={(e) => setPickerDept(e.target.value)}
             options={departments.map((d) => ({ value: d.id, label: d.name }))}
           />
-          <Select label="Level" value={pickerLevel} onChange={(e) => setPickerLevel(e.target.value)} options={LEVELS.map((l) => ({ value: l, label: `${l} Level` }))} />
-          <div className="flex flex-wrap gap-2">
-            {(coursesQ.data ?? []).length === 0 ? (
+          <Select label="Level" value={pickerLevel} onChange={(e) => setPickerLevel(e.target.value)} options={COURSE_LEVEL_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))} />
+          <SemesterFilterPills value={semesterFilter} onChange={setSemesterFilter} />
+          <div className="space-y-2">
+            {filteredPickerCourses.length === 0 ? (
               <p className="text-[14px] text-text-muted">No courses available for this department and level.</p>
             ) : (
-              coursesQ.data!.map((c) => (
-                <SubjectPill
+              filteredPickerCourses.map((c) => (
+                <CourseSelectItem
                   key={c.id}
-                  label={`${c.course_code} · ${c.course_title}`}
+                  course={c}
                   selected={pickerSelected.includes(c.course_code)}
                   onClick={() =>
                     setPickerSelected((p) =>

@@ -69,9 +69,9 @@ app.include_router(engagement_router)
 app.include_router(platform_tasks_router)
 app.include_router(onboarding_router)
 app.include_router(lecturer_router)
+app.include_router(admin_router)
 app.include_router(admin_catalog_router)
 app.include_router(auth_router)
-app.include_router(admin_router)
 app.include_router(upload_router)
 
 
