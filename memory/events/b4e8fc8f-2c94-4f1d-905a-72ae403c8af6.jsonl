@@ -51,3 +51,16 @@
 {"timestamp": "2026-06-11T22:47:19.615234+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
 {"timestamp": "2026-06-11T22:47:33.650928+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
 {"timestamp": "2026-06-11T22:47:33.650928+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-11T23:34:50.790472+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-11T23:34:50.797062+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-11T23:35:08.781980+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-11T23:36:22.136102+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-11T23:36:32.703492+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-11T23:37:59.736034+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-11T23:38:07.023063+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-11T23:38:08.837865+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-11T23:38:10.859267+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-11T23:41:54.745136+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-11T23:41:54.752001+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-11T23:45:44.681197+00:00", "event_type": "page_view", "metadata": {"page": "/student/settings"}}
+{"timestamp": "2026-06-11T23:50:30.503168+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}

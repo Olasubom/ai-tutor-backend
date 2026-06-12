@@ -1,16 +1,30 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import axios from 'axios';
 import { ArrowDown, ArrowUp, Check, ChevronDown, X } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { generateQuiz, submitQuiz, type QuizGenerateResponse, type QuizSubmitResponse } from '@/api/quiz';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 
 type Step = 'start' | 'question' | 'review' | 'results';
+
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+    if (detail && typeof detail === 'object' && 'detail' in detail) {
+      const nested = (detail as { detail?: string }).detail;
+      if (typeof nested === 'string') return nested;
+    }
+    return err.message || fallback;
+  }
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
 
 export default function Quiz() {
   const { topic = 'General' } = useParams();
@@ -20,7 +34,10 @@ export default function Quiz() {
   const toast = useToastStore((s) => s.add);
 
   const [step, setStep] = useState<Step>('start');
-  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [quiz, setQuiz] = useState<QuizGenerateResponse | null>(null);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
@@ -30,28 +47,41 @@ export default function Quiz() {
   const qStart = useRef(Date.now());
 
   const start = async () => {
-    setLoading(true);
+    if (!learnerId) {
+      toast('Sign in as a student to take a quiz.', 'error');
+      return;
+    }
+    setGenerating(true);
+    setLoadError(null);
     try {
       const data = await generateQuiz(learnerId, decodedTopic);
+      if (!data.questions?.length) {
+        throw new Error('No questions were generated for this topic.');
+      }
       setQuiz(data);
+      setIndex(0);
+      setAnswers({});
+      setTimes({});
       setStep('question');
       qStart.current = Date.now();
-    } catch {
-      toast('Failed to generate quiz', 'error');
+    } catch (err) {
+      setLoadError(extractErrorMessage(err, 'Failed to load quiz'));
     } finally {
-      setLoading(false);
+      setGenerating(false);
     }
   };
 
   const selectOption = (opt: number) => {
     if (!quiz) return;
     const q = quiz.questions[index];
+    if (!q) return;
     setAnswers((a) => ({ ...a, [q.question_id]: opt }));
   };
 
   const next = () => {
     if (!quiz) return;
     const q = quiz.questions[index];
+    if (!q || answers[q.question_id] === undefined) return;
     const elapsed = Math.max(1, Math.round((Date.now() - qStart.current) / 1000));
     setTimes((t) => ({ ...t, [q.question_id]: elapsed }));
     if (index < quiz.questions.length - 1) {
@@ -63,8 +93,9 @@ export default function Quiz() {
   };
 
   const finish = async () => {
-    if (!quiz) return;
-    setLoading(true);
+    if (!quiz || !learnerId) return;
+    setSubmitting(true);
+    setSubmitError(null);
     try {
       const responses = quiz.questions.map((q) => ({
         question_id: q.question_id,
@@ -75,16 +106,12 @@ export default function Quiz() {
       setResults(data);
       setStep('results');
       toast('Results ready. Mastery updated.', 'success');
-    } catch {
-      toast('Failed to submit quiz', 'error');
+    } catch (err) {
+      setSubmitError(extractErrorMessage(err, 'Failed to submit quiz'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
-
-  if (loading && step === 'start') {
-    return <Skeleton className="h-96 w-full" />;
-  }
 
   if (step === 'start') {
     return (
@@ -92,8 +119,17 @@ export default function Quiz() {
         <Badge variant="primary">{decodedTopic}</Badge>
         <h1 className="mt-4 text-[28px] font-extrabold">Topic Quiz</h1>
         <p className="mt-2 text-text-secondary">5 questions · ~10 minutes estimated</p>
-        <Button className="mt-8" onClick={start} disabled={loading}>
-          Start Quiz
+        {loadError && (
+          <div className="mt-6 rounded-xl border border-error/30 bg-error/5 p-4 text-left">
+            <p className="font-medium text-error">Failed to load quiz</p>
+            <p className="mt-1 text-[14px] text-text-secondary">{loadError}</p>
+            <Button type="button" className="mt-4" variant="secondary" onClick={start} disabled={generating}>
+              Try Again
+            </Button>
+          </div>
+        )}
+        <Button className="mt-8" onClick={start} disabled={generating || !learnerId}>
+          {generating ? 'Generating…' : 'Start Quiz'}
         </Button>
       </Card>
     );
@@ -101,6 +137,16 @@ export default function Quiz() {
 
   if (step === 'question' && quiz) {
     const q = quiz.questions[index];
+    if (!q) {
+      return (
+        <Card className="mx-auto max-w-xl p-8 text-center">
+          <p className="text-error">This quiz has no questions.</p>
+          <Button className="mt-4" onClick={() => setStep('start')}>
+            Back
+          </Button>
+        </Card>
+      );
+    }
     const selected = answers[q.question_id];
     return (
       <div className="mx-auto max-w-2xl space-y-6">
@@ -119,10 +165,11 @@ export default function Quiz() {
                 type="button"
                 onClick={() => selectOption(i)}
                 className={cn(
-                  'w-full rounded-xl border bg-card p-4 text-left text-[15px] transition',
-                  selected === i ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40',
+                  'w-full cursor-pointer rounded-xl border bg-card p-4 text-left text-[15px] transition',
+                  selected === i ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/40 hover:bg-card-hover',
                 )}
               >
+                <span className="mr-3 font-medium text-text-muted">{String.fromCharCode(65 + i)}.</span>
                 {opt}
               </button>
             ))}
@@ -140,6 +187,12 @@ export default function Quiz() {
       <div className="mx-auto max-w-2xl space-y-6">
         <h2 className="text-[22px] font-bold">Submit for results?</h2>
         <p className="text-text-secondary">You answered all {quiz.questions.length} questions.</p>
+        {submitError && (
+          <div className="rounded-xl border border-error/30 bg-error/5 p-4">
+            <p className="font-medium text-error">Failed to submit quiz</p>
+            <p className="mt-1 text-[14px] text-text-secondary">{submitError}</p>
+          </div>
+        )}
         {quiz.questions.map((q, i) => (
           <Card key={q.question_id} className="p-4">
             <div className="text-[13px] text-text-muted">Q{i + 1}</div>
@@ -149,8 +202,8 @@ export default function Quiz() {
             </div>
           </Card>
         ))}
-        <Button onClick={finish} disabled={loading}>
-          Submit
+        <Button onClick={finish} disabled={submitting}>
+          {submitting ? 'Submitting…' : 'Submit'}
         </Button>
       </div>
     );
@@ -210,7 +263,7 @@ export default function Quiz() {
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <Button onClick={() => { setStep('start'); setQuiz(null); setResults(null); setIndex(0); setAnswers({}); }}>
+          <Button onClick={() => { setStep('start'); setQuiz(null); setResults(null); setIndex(0); setAnswers({}); setLoadError(null); }}>
             Practice Again
           </Button>
           <Button variant="secondary" onClick={() => navigate('/student/library')}>

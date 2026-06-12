@@ -7,7 +7,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fastapi_app.admin.models import AdminNucId, College, Course, Department
@@ -133,7 +133,20 @@ def list_departments(
     if college_id:
         q = q.where(Department.college_id == college_id)
     rows = db.scalars(q.order_by(Department.name)).all()
-    return [{"id": d.id, "name": d.name, "college_id": d.college_id} for d in rows]
+    result = []
+    for d in rows:
+        course_count = db.scalar(
+            select(func.count()).select_from(Course).where(Course.department_id == d.id)
+        )
+        result.append(
+            {
+                "id": d.id,
+                "name": d.name,
+                "college_id": d.college_id,
+                "course_count": int(course_count or 0),
+            }
+        )
+    return result
 
 
 @router.delete("/departments/{department_id}")

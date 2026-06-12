@@ -7,5 +7,32 @@
     "is_read": false,
     "created_at": "2026-06-11T22:44:05.662001+00:00",
     "action_url": "/student/tasks"
+  },
+  {
+    "notification_id": "4263aef9-2bb2-4e6a-b7ce-4a2dcc9002a1",
+    "type": "task_due",
+    "title": "Task due soon",
+    "body": "Factoring Practice Problems",
+    "is_read": false,
+    "created_at": "2026-06-11T23:34:51.831923+00:00",
+    "action_url": "/student/tasks"
+  },
+  {
+    "notification_id": "53ec61a8-2593-4283-b89a-4fc3d7719524",
+    "type": "task_due",
+    "title": "Task due soon",
+    "body": "Factoring Practice Problems",
+    "is_read": false,
+    "created_at": "2026-06-11T23:38:08.874958+00:00",
+    "action_url": "/student/tasks"
+  },
+  {
+    "notification_id": "9ccb6944-fd1d-4c7e-92e3-dff8426ab200",
+    "type": "task_due",
+    "title": "Task due soon",
+    "body": "Factoring Practice Problems",
+    "is_read": false,
+    "created_at": "2026-06-11T23:41:54.736157+00:00",
+    "action_url": "/student/tasks"
   }
 ]

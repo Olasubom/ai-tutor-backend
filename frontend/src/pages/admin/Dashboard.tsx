@@ -235,14 +235,12 @@ export default function AdminDashboard() {
       setCourseLevel(level);
       setNewCourseCode('');
       setNewCourseTitle('');
-      await qc.refetchQueries({ queryKey: ['admin-courses', courseDept, level] });
+      await qc.invalidateQueries({ queryKey: ['admin-courses'] });
+      await qc.invalidateQueries({ queryKey: ['admin-departments'] });
       toast('Course added successfully', 'success');
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 409) {
-        const detail = err.response.data?.detail;
-        toast(typeof detail === 'string' ? detail : 'Course already exists.', 'error');
-      } else {
-        toast('Failed to add course', 'error');
+        return;
       }
     } finally {
       setIsSubmittingCourse(false);
@@ -501,7 +499,8 @@ export default function AdminDashboard() {
                     setActing(c.id);
                     try {
                       await removeCourse(c.id);
-                      await qc.refetchQueries({ queryKey: ['admin-courses', courseDept, courseLevel] });
+                      await qc.invalidateQueries({ queryKey: ['admin-courses'] });
+                      await qc.invalidateQueries({ queryKey: ['admin-departments'] });
                       toast('Course removed', 'success');
                     } catch {
                       toast('Could not remove course', 'error');

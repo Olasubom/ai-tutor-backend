@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, Clock, ExternalLink } from 'lucide-react';
@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Skeleton, ResourceCardSkeleton } from '@/components/ui/Skeleton';
 import { getRecommendations } from '@/api/recommendations';
 import { useAuth } from '@/hooks/useAuth';
-import { useLearnerProfile } from '@/hooks/useStudent';
+import { useKnowledge } from '@/hooks/useStudent';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatResourceType, matchesResourceFilter, resourceTypePillClass } from '@/lib/resourceTypes';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,7 @@ const filters = ['All Resources', 'Video Lectures', 'E-Books', 'Interactive Quiz
 export default function Library() {
   const navigate = useNavigate();
   const { learnerId } = useAuth();
-  const profile = useLearnerProfile(learnerId);
+  const knowledge = useKnowledge(learnerId);
   const [active, setActive] = useState('All Resources');
   const { data, isLoading } = useQuery({
     queryKey: ['library', learnerId],
@@ -30,7 +30,12 @@ export default function Library() {
     matchesResourceFilter(item.modality, item.source_type, active),
   );
 
-  const mastery = profile.isLoading ? null : profile.data?.profile.overall_mastery_percentage ?? 0;
+  const overallMastery = useMemo(() => {
+    const subjects = knowledge.data?.subjects ?? [];
+    if (subjects.length === 0) return null;
+    const avg = subjects.reduce((sum, subject) => sum + subject.mastery, 0) / subjects.length;
+    return Math.round(avg);
+  }, [knowledge.data?.subjects]);
 
   return (
     <div className="space-y-6">
@@ -43,10 +48,12 @@ export default function Library() {
         </div>
         <Card className="p-4">
           <div className="label-caps text-text-muted">Global Mastery Match</div>
-          {profile.isLoading ? (
+          {knowledge.isLoading ? (
             <Skeleton className="mt-2 h-8 w-16" />
+          ) : overallMastery === null ? (
+            <div className="mt-2 text-[18px] font-semibold text-text-muted">Not yet calculated</div>
           ) : (
-            <div className="stat-number text-teal">{mastery}%</div>
+            <div className="stat-number text-teal">{overallMastery}%</div>
           )}
         </Card>
       </div>
@@ -84,11 +91,14 @@ export default function Library() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {items.map((item, i) => {
             const typeLabel = formatResourceType(item.modality ?? item.source_type ?? 'resource');
+            const matchPct = item.score != null ? Math.round(item.score * 100) : null;
             return (
               <Card key={item.item_id} className={cn('relative p-6', i === 0 && 'md:col-span-2')}>
-                <span className="absolute right-4 top-4 rounded-full px-2 py-0.5 text-[11px] font-bold text-primary">
-                  {Math.round((item.score ?? 0) * 100)}% MATCH
-                </span>
+                {matchPct != null && (
+                  <span className="absolute right-4 top-4 rounded-full px-2 py-0.5 text-[11px] font-bold text-primary">
+                    {matchPct}% MATCH
+                  </span>
+                )}
                 <span className={cn('label-caps rounded-full px-2 py-0.5 text-[11px] font-bold uppercase', resourceTypePillClass(item.modality ?? item.source_type ?? ''))}>
                   {typeLabel}
                 </span>
