@@ -82,6 +82,8 @@ export interface TutorRecommendResponse {
   adaptive_path: Array<Record<string, unknown>>;
   memory_used?: MemoryBundle;
   timestamp: string;
+  status?: string;
+  message?: string;
 }
 
 export interface LearnerProfileResponse {

@@ -24,6 +24,7 @@ def fetch_youtube_learning_items(topics: List[str], max_per_topic: int = 5) -> L
     """
     api_key = os.getenv("YOUTUBE_API_KEY", "").strip()
     if not api_key:
+        print("[WARNING] YOUTUBE_API_KEY not set. YouTube ingestion will be skipped.")
         return []
 
     out: List[Dict[str, Any]] = []
@@ -72,18 +73,24 @@ def fetch_youtube_learning_items(topics: List[str], max_per_topic: int = 5) -> L
     return out
 
 
-def fetch_ebook_learning_items(topics: List[str], max_per_topic: int = 5) -> List[Dict[str, Any]]:
+def fetch_ebook_learning_items(
+    topics: List[str],
+    max_per_topic: int = 5,
+    *,
+    candidates_per_topic: int | None = None,
+) -> List[Dict[str, Any]]:
     """
     Fetch ebook-like resources from OpenLibrary search API.
 
-    No API key required.
+    No API key required. Use candidates_per_topic to over-fetch before relevance filtering.
     """
+    api_limit = max(candidates_per_topic or max_per_topic, max_per_topic)
     out: List[Dict[str, Any]] = []
     with httpx.Client(timeout=20.0) as client:
         for topic in topics:
             resp = client.get(
                 "https://openlibrary.org/search.json",
-                params={"q": topic, "limit": max_per_topic},
+                params={"q": topic, "limit": api_limit},
             )
             if resp.status_code != 200:
                 continue
@@ -94,12 +101,19 @@ def fetch_ebook_learning_items(topics: List[str], max_per_topic: int = 5) -> Lis
                 if not key or not title:
                     continue
                 work_id = str(key).strip("/").replace("/", "_")
+                subject_names = doc.get("subject", []) or []
+                description = _clean_text(
+                    f"Reading resource for {topic}. "
+                    f"Subjects: {', '.join(str(s) for s in subject_names[:5])}"
+                    if subject_names
+                    else f"Reading resource for {topic}"
+                )
                 out.append(
                     {
                         "id": f"book_{work_id}",
                         "topic": _clean_text(topic),
                         "title": _clean_text(title),
-                        "description": _clean_text(f"Reading resource for {topic}"),
+                        "description": description,
                         "modality": "text",
                         "bloom_level": "understand",
                         "difficulty": "medium",

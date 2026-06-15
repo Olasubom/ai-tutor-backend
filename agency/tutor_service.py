@@ -18,7 +18,6 @@ from agency.agency import get_agency
 from agency.agents.RecommendationAgent import recommendation_agent
 from agency.core.context import get_runtime
 from agency.core.routing import detect_routing_hint
-from agency.core.services.bkt import apply_events
 from agency.core.services.recommender import hybrid_recommend
 from agency.core.tools.database import Database
 from agency.core.tools.source_ingestion import fetch_ebook_learning_items, fetch_youtube_learning_items
@@ -34,6 +33,44 @@ _MODALITY_ALIASES = {
     "game": {"game", "games", "gamified"},
     "read_aloud": {"read aloud", "audio", "narration", "narrated"},
 }
+
+
+def _enrolled_match_terms(enrolled_courses: List[Dict[str, Any]]) -> set[str]:
+    terms: set[str] = set()
+    for course in enrolled_courses:
+        code = str(course.get("code") or course.get("course_code") or "").strip().lower()
+        title = str(course.get("title") or course.get("course_title") or "").strip().lower()
+        if code:
+            terms.add(code)
+        if title:
+            terms.add(title)
+            for word in re.split(r"[^\w]+", title):
+                if len(word) > 3:
+                    terms.add(word)
+    return terms
+
+
+def _catalog_item_matches_enrolled(item: Dict[str, Any], terms: set[str]) -> bool:
+    if not terms:
+        return True
+    blob = " ".join(
+        [
+            str(item.get("title", "")),
+            str(item.get("topic", "")),
+            " ".join(str(t) for t in item.get("topics", [])),
+            " ".join(str(t) for t in item.get("tags", [])),
+        ]
+    ).lower()
+    return any(term in blob for term in terms)
+
+
+def _normalize_catalog_item_types(item: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from fastapi_app.services.content_type import normalize_content_item
+
+        return normalize_content_item(item)
+    except Exception:
+        return item
 
 
 def _ensure_env() -> None:
@@ -86,6 +123,48 @@ def _extract_final_output(result: Any) -> str:
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 
 
+def _normalize_resource_title(title: str) -> str:
+    return " ".join(str(title or "").lower().split())
+
+
+def _unified_resource_list(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Merge recommendations and adaptive_path without duplicate titles."""
+    seen: set[str] = set()
+    unified: List[Dict[str, Any]] = []
+
+    recs = data.get("recommendations")
+    if isinstance(recs, list):
+        for rec in recs:
+            if not isinstance(rec, dict):
+                continue
+            title = str(rec.get("title") or rec.get("topic") or "").strip()
+            key = _normalize_resource_title(title)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            unified.append(rec)
+
+    adaptive = data.get("adaptive_path")
+    if isinstance(adaptive, list):
+        for step in adaptive:
+            if not isinstance(step, dict):
+                continue
+            title = str(step.get("title") or step.get("topic") or "").strip()
+            key = _normalize_resource_title(title)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            unified.append(step)
+
+    return unified
+
+
+def _looks_like_resource_list(text: str) -> bool:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    numbered = sum(1 for line in lines if re.match(r"^\d+\.", line))
+    return numbered >= 2
+
+
 def _format_structured_payload(data: Any) -> str:
     if not isinstance(data, dict):
         return ""
@@ -113,14 +192,12 @@ def _format_structured_payload(data: Any) -> str:
     if isinstance(notes, str) and notes.strip():
         parts.append(notes.strip())
 
-    recs = data.get("recommendations")
-    if isinstance(recs, list) and recs:
-        parts.append("**Recommended for you**")
-        for i, rec in enumerate(recs[:6], 1):
-            if not isinstance(rec, dict):
-                continue
+    resources = _unified_resource_list(data)
+    if resources:
+        parts.append("**Study recommendations**")
+        for i, rec in enumerate(resources[:6], 1):
             title = rec.get("title") or rec.get("topic") or "Resource"
-            duration = rec.get("duration_minutes")
+            duration = rec.get("duration_minutes") or rec.get("estimated_minutes")
             modality = rec.get("modality") or rec.get("source_type") or ""
             reasons = rec.get("reasons") or ([rec.get("reason")] if rec.get("reason") else [])
             meta = [str(modality).replace("_", " ").title()] if modality else []
@@ -130,19 +207,9 @@ def _format_structured_payload(data: Any) -> str:
             if meta:
                 line += f" ({', '.join(meta)})"
             parts.append(line)
-            for reason in reasons[:2]:
-                if reason:
-                    parts.append(f"   - {reason}")
-
-    adaptive = data.get("adaptive_path")
-    if isinstance(adaptive, list) and adaptive:
-        parts.append("**Suggested learning path**")
-        for i, step in enumerate(adaptive[:5], 1):
-            if isinstance(step, dict):
-                title = step.get("title") or step.get("topic") or step.get("step") or f"Step {i}"
-                parts.append(f"{i}. {title}")
-            elif step:
-                parts.append(f"{i}. {step}")
+            reason = next((str(r) for r in reasons if r), None)
+            if reason:
+                parts.append(f"   - {reason}")
 
     error = data.get("error")
     if error:
@@ -170,17 +237,25 @@ def humanize_assistant_message(text: str) -> str:
 
     prose_parts: List[str] = []
     remainder = _JSON_FENCE_RE.sub("", stripped).strip()
-    if remainder:
-        prose_parts.append(remainder)
+    formatted_blocks: List[str] = []
 
     for block in blocks:
         try:
             payload = json.loads(block.strip())
             formatted = _format_structured_payload(payload)
             if formatted:
-                prose_parts.append(formatted)
+                formatted_blocks.append(formatted)
         except json.JSONDecodeError:
             continue
+
+    if formatted_blocks:
+        combined = "\n\n".join(formatted_blocks)
+        if remainder and not _looks_like_resource_list(remainder):
+            return f"{remainder}\n\n{combined}".strip()
+        return combined
+
+    if remainder:
+        prose_parts.append(remainder)
 
     return "\n\n".join(prose_parts).strip() or text
 
@@ -459,6 +534,7 @@ def handle_recommend_request(
     events: Optional[List[Dict[str, Any]]] = None,
     limit: int = 6,
     use_agent: bool = False,
+    enrolled_courses: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Direct recommendations without full Coordinator chat.
@@ -480,13 +556,6 @@ def handle_recommend_request(
 
     if events:
         runtime.learner_memory.update_learner_profile(learner_id, events)
-        profile = runtime.learner_memory.get_profile(learner_id)
-        topic_mastery = profile.get("topic_mastery", {})
-        topic_mastery, summary = apply_events(topic_mastery, events)
-        runtime.learner_memory.upsert_profile(
-            learner_id,
-            {"topic_mastery": topic_mastery, "knowledge_state_summary": summary},
-        )
 
     if use_agent and os.getenv("OPENAI_API_KEY"):
         try:
@@ -520,6 +589,14 @@ def handle_recommend_request(
     weak_topics = highlights.get("weak_topics") or (
         (profile.get("knowledge_state_summary") or {}).get("weak_topics", [])
     )
+    if enrolled_courses:
+        for course in enrolled_courses:
+            title = str(course.get("title") or course.get("course_title") or "")
+            code = str(course.get("code") or course.get("course_code") or "")
+            if title:
+                weak_topics = list(weak_topics) + [title]
+            if code:
+                weak_topics = list(weak_topics) + [code]
     preferences = profile.get("preferences", {})
     preferred_modalities = (
         highlights.get("preferred_modalities", [])
@@ -533,8 +610,27 @@ def handle_recommend_request(
     )
     memory_snippets = [m["content"] for m in mem.get("vector_memories", [])]
 
+    from fastapi_app.services.content_ingestion_service import NO_CONTENT_MESSAGE
+    from fastapi_app.services.content_relevance import filter_content_by_enrolled_courses
+
+    catalog = [_normalize_catalog_item_types(item) for item in runtime.catalog]
+    if enrolled_courses:
+        relevant_catalog = filter_content_by_enrolled_courses(catalog, enrolled_courses)
+        if not relevant_catalog:
+            return {
+                "request_id": request_id,
+                "learner_id": learner_id,
+                "source": "hybrid_recommender",
+                "recommendations": [],
+                "adaptive_path": [],
+                "status": "no_content_for_courses",
+                "message": NO_CONTENT_MESSAGE,
+                "timestamp": utc_now().isoformat(),
+            }
+        catalog = relevant_catalog
+
     ranked, adaptive_path = hybrid_recommend(
-        catalog=runtime.catalog,
+        catalog=catalog,
         weak_topics=weak_topics,
         preferences=preference_terms if isinstance(preference_terms, list) else [],
         memory_snippets=memory_snippets,
@@ -553,9 +649,9 @@ def handle_recommend_request(
             "tags": r.payload.get("tags", []),
             "modality": r.payload.get("modality"),
             "bloom_level": r.payload.get("bloom_level"),
-            "source_type": r.payload.get("source_type"),
+            "source_type": _normalize_catalog_item_types(r.payload).get("source_type"),
             "provider": r.payload.get("provider"),
-            "source_url": r.payload.get("source_url"),
+            "source_url": r.payload.get("source_url") or r.payload.get("url") or r.payload.get("external_url"),
             "score": round(r.score, 3),
             "reasons": r.reasons,
             "reason": " · ".join(r.reasons) if r.reasons else "Recommended for your learning path",
@@ -703,7 +799,16 @@ def ingest_source_items(source: str, topics: Optional[List[str]] = None, max_per
         if normalized_source in {"youtube", "all"}:
             fetched_items.extend(fetch_youtube_learning_items(selected_topics, max_per_topic=max_per_topic))
         if normalized_source in {"ebooks", "ebook", "all"}:
-            fetched_items.extend(fetch_ebook_learning_items(selected_topics, max_per_topic=max_per_topic))
+            from scripts.ingest_ebooks import _filter_ebook_candidates
+
+            ebook_candidates = fetch_ebook_learning_items(
+                selected_topics,
+                max_per_topic=max_per_topic,
+                candidates_per_topic=max(max_per_topic * 8, 15),
+            )
+            fetched_items.extend(
+                _filter_ebook_candidates(ebook_candidates, max_per_topic=max_per_topic)
+            )
 
         deduped: List[Dict[str, Any]] = []
         seen_keys = set()

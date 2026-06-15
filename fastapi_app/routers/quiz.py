@@ -40,7 +40,12 @@ def generate_quiz(payload: QuizGenerateRequest, _: None = Depends(require_api_ke
 def submit_quiz(payload: QuizSubmitRequest, _: None = Depends(require_api_key)):
     try:
         responses = [r.model_dump() for r in payload.responses]
-        return quiz_service.submit_quiz(payload.learner_id, payload.quiz_id, responses)
+        return quiz_service.submit_quiz(
+            payload.learner_id,
+            payload.quiz_id,
+            responses,
+            content_item_id=payload.content_item_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail={"detail": str(exc), "code": "quiz_not_found"}) from exc
     except Exception as exc:

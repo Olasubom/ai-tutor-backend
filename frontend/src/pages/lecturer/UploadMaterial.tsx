@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
@@ -20,6 +20,7 @@ import { useToastStore } from '@/components/ui/Toast';
 import {
   deleteMaterial,
   downloadMaterial,
+  getLecturerCourses,
   listMaterials,
   uploadMaterial,
   type UploadedMaterial,
@@ -66,6 +67,10 @@ function formatDate(iso: string) {
   }
 }
 
+function semesterLabel(semester: string) {
+  return semester === 'Both' ? 'Full Year' : `${semester} Semester`;
+}
+
 export default function UploadMaterial() {
   const toast = useToastStore((s) => s.add);
   const qc = useQueryClient();
@@ -75,18 +80,36 @@ export default function UploadMaterial() {
   const [fileError, setFileError] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState('');
-  const [courseCode, setCourseCode] = useState('');
+  const [courseId, setCourseId] = useState('');
+  const [moduleOrder, setModuleOrder] = useState('');
   const [description, setDescription] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [success, setSuccess] = useState<{ status: string; message: string } | null>(null);
   const [error, setError] = useState('');
 
+  const coursesQ = useQuery({
+    queryKey: ['lecturer-courses'],
+    queryFn: getLecturerCourses,
+  });
+
   const myUploads = useQuery({
     queryKey: ['my-uploads'],
     queryFn: () => listMaterials({ mine: true }),
   });
+
+  const groupedByCourse = useMemo(() => {
+    const map: Record<string, UploadedMaterial[]> = {};
+    for (const m of myUploads.data?.materials ?? []) {
+      const label =
+        m.course_code && m.course_title
+          ? `${m.course_code} — ${m.course_title}`
+          : m.course_code || 'Uncategorized';
+      if (!map[label]) map[label] = [];
+      map[label].push(m);
+    }
+    return map;
+  }, [myUploads.data]);
 
   const pickFile = useCallback((picked: File | null) => {
     if (!picked) return;
@@ -106,8 +129,8 @@ export default function UploadMaterial() {
   const resetForm = () => {
     setFile(null);
     setTitle('');
-    setSubject('');
-    setCourseCode('');
+    setCourseId('');
+    setModuleOrder('');
     setDescription('');
     setUploadProgress(0);
     setSuccess(null);
@@ -116,16 +139,16 @@ export default function UploadMaterial() {
   };
 
   const handleUpload = async () => {
-    if (!file || !title.trim()) return;
+    if (!file || !title.trim() || !courseId) return;
     setUploading(true);
     setUploadProgress(0);
     setError('');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('title', title.trim());
+    formData.append('course_id', courseId);
     if (description) formData.append('description', description);
-    if (subject) formData.append('subject', subject);
-    if (courseCode) formData.append('course_code', courseCode);
+    if (moduleOrder.trim()) formData.append('module_order', moduleOrder.trim());
 
     try {
       const res = await uploadMaterial(formData, setUploadProgress);
@@ -133,8 +156,8 @@ export default function UploadMaterial() {
         status: res.status,
         message:
           res.status === 'pending_review'
-            ? 'Your material is pending admin review and will be visible to students once approved.'
-            : 'Your material is now live and visible to students.',
+            ? 'Your material is pending admin review and will appear in the course curriculum once approved.'
+            : 'Your material is now live in the course curriculum.',
       });
       qc.invalidateQueries({ queryKey: ['my-uploads'] });
     } catch (e) {
@@ -165,7 +188,7 @@ export default function UploadMaterial() {
       <div>
         <h1 className="text-[28px] font-extrabold tracking-tight">Upload Learning Material</h1>
         <p className="mt-1 text-text-secondary">
-          Share resources with students. Materials are reviewed before becoming visible.
+          Upload materials linked to a specific course. They become curriculum modules once approved.
         </p>
       </div>
 
@@ -220,33 +243,46 @@ export default function UploadMaterial() {
               {fileError && <p className="mt-2 text-[13px] text-error">{fileError}</p>}
 
               {file && (
-                <div className="mt-4 flex items-center gap-3 rounded-lg border border-border px-4 py-3">
-                  {(() => {
-                    const { icon: Icon, color } = fileTypeIcon(
-                      file.name.endsWith('.pdf') ? 'pdf' : file.name.match(/\.(mp4|webm)$/i) ? 'video' : 'document',
-                    );
-                    return <Icon className={cn('h-5 w-5', color)} />;
-                  })()}
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{file.name}</div>
-                    <div className="text-[12px] text-text-muted">{(file.size / (1024 * 1024)).toFixed(2)} MB</div>
-                  </div>
-                  <button type="button" className="rounded p-1 text-text-muted hover:bg-card-hover" onClick={() => setFile(null)}>
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
+                <div className="mt-4 space-y-4">
+                  <Input label="Title *" placeholder="e.g. Introduction to Contract Law" value={title} onChange={(e) => setTitle(e.target.value)} />
 
-              {file && (
-                <div className="mt-6 space-y-4">
-                  <Input label="Title *" placeholder="e.g. Introduction to Calculus" value={title} onChange={(e) => setTitle(e.target.value)} />
-                  <Input label="Subject" placeholder="e.g. Calculus, Data Structures" value={subject} onChange={(e) => setSubject(e.target.value)} />
-                  <Input label="Course Code" placeholder="e.g. CSC 301, MTH 201" value={courseCode} onChange={(e) => setCourseCode(e.target.value)} />
+                  <div>
+                    <label className="text-[13px] text-text-muted">Course *</label>
+                    <select
+                      className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-[14px]"
+                      value={courseId}
+                      onChange={(e) => setCourseId(e.target.value)}
+                      required
+                    >
+                      <option value="">Select a course</option>
+                      {(coursesQ.data ?? []).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.title} ({semesterLabel(c.semester)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[13px] text-text-muted">Module Order (optional)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-[14px]"
+                      value={moduleOrder}
+                      onChange={(e) => setModuleOrder(e.target.value)}
+                      placeholder="e.g. 1 (leave blank to add at the end)"
+                    />
+                    <p className="mt-1 text-xs text-text-muted">
+                      Sets the position of this material in the course curriculum. Students unlock the next module after completing the previous one.
+                    </p>
+                  </div>
+
                   <div>
                     <label className="text-[13px] text-text-muted">Description</label>
                     <textarea
                       rows={3}
-                      placeholder="Brief description of this material and what students will learn from it..."
+                      placeholder="Brief description of this material..."
                       className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-[14px]"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
@@ -260,7 +296,7 @@ export default function UploadMaterial() {
                   <Button
                     type="button"
                     fullWidth
-                    disabled={!file || !title.trim() || uploading}
+                    disabled={!file || !title.trim() || !courseId || uploading}
                     onClick={handleUpload}
                   >
                     {uploading ? `Uploading... ${uploadProgress}%` : 'Upload Material'}
@@ -283,53 +319,47 @@ export default function UploadMaterial() {
 
         <Card className="p-6">
           <h2 className="text-[18px] font-bold">My Uploaded Materials</h2>
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-4">
             {myUploads.isLoading ? (
               <p className="text-[14px] text-text-muted">Loading…</p>
-            ) : !myUploads.data?.materials.length ? (
+            ) : Object.keys(groupedByCourse).length === 0 ? (
               <p className="text-[14px] text-text-muted">You haven&apos;t uploaded any materials yet.</p>
             ) : (
-              myUploads.data.materials.map((m) => {
-                const { icon: Icon, color } = fileTypeIcon(m.file_type);
-                return (
-                  <div key={m.id} className="rounded-xl border border-border p-4">
-                    <div className="flex items-start gap-3">
-                      <Icon className={cn('mt-1 h-5 w-5 shrink-0', color)} />
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold">{m.title}</div>
-                        <div className="text-[12px] text-text-muted">
-                          {[m.course_code, m.subject].filter(Boolean).join(' · ')}
-                        </div>
-                        <div className="text-[12px] text-text-muted">
-                          {m.file_size_mb} MB · {formatDate(m.created_at)}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-2">
-                        {statusBadge(m.status)}
-                        <div className="flex gap-1">
+              Object.entries(groupedByCourse).map(([courseLabel, items]) => (
+                <div key={courseLabel}>
+                  <h4 className="mb-2 text-sm font-semibold">{courseLabel}</h4>
+                  {[...items]
+                    .sort((a, b) => (a.module_order ?? 999) - (b.module_order ?? 999))
+                    .map((m, i) => {
+                      const { icon: Icon, color } = fileTypeIcon(m.file_type);
+                      return (
+                        <div key={m.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+                          <span className="w-6 text-xs text-text-muted">{m.module_order ?? i + 1}</span>
+                          <Icon className={cn('h-4 w-4 shrink-0', color)} />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium">{m.title}</div>
+                            <div className="text-[11px] text-text-muted">{formatDate(m.created_at)}</div>
+                          </div>
+                          {statusBadge(m.status)}
                           <button
                             type="button"
-                            className="rounded p-2 text-text-muted hover:bg-card-hover"
+                            className="rounded p-1 text-text-muted hover:bg-card-hover"
                             onClick={() => downloadMaterial(m.id, m.original_name).catch(() => toast('Download failed', 'error'))}
                           >
                             <Download className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
-                            className="rounded p-2 text-error hover:bg-card-hover"
+                            className="rounded p-1 text-error hover:bg-card-hover"
                             onClick={() => handleDelete(m)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
-                      </div>
-                    </div>
-                    {m.status === 'rejected' && m.rejection_reason && (
-                      <p className="mt-2 text-[13px] italic text-error">Rejected: {m.rejection_reason}</p>
-                    )}
-                  </div>
-                );
-              })
+                      );
+                    })}
+                </div>
+              ))
             )}
           </div>
         </Card>

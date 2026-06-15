@@ -50,11 +50,13 @@ export async function submitQuiz(
   learnerId: string,
   quizId: string,
   responses: Array<{ question_id: string; selected_option: number; time_taken_seconds: number }>,
+  contentItemId?: string,
 ) {
   const { data } = await apiClient.post<QuizSubmitResponse>('/quiz/submit', {
     learner_id: learnerId,
     quiz_id: quizId,
     responses,
+    content_item_id: contentItemId,
   });
   return data;
 }

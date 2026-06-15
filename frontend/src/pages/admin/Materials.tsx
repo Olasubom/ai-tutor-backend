@@ -183,9 +183,15 @@ export default function AdminMaterials() {
                 </div>
                 <h3 className="mt-2 text-[18px] font-bold">{m.title}</h3>
                 {m.description && <p className="mt-1 text-[14px] text-text-secondary">{m.description}</p>}
+                {(m.course_code || m.course_title) && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    For: {m.course_code ?? '—'} — {m.course_title ?? 'Unknown course'}
+                  </p>
+                )}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {m.course_code && <Badge variant="muted">{m.course_code}</Badge>}
-                  {m.subject && <Badge variant="muted">{m.subject}</Badge>}
+                  {typeof m.module_order === 'number' && (
+                    <Badge variant="muted">Module {m.module_order}</Badge>
+                  )}
                 </div>
                 <div className="mt-3 flex items-center gap-2 text-[13px] text-text-muted">
                   <Icon className="h-4 w-4" />

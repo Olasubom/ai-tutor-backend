@@ -272,6 +272,9 @@ def complete_onboarding(
             "onboarding_complete": True,
         },
     )
+    from fastapi_app.services.onboarding_service import seed_knowledge
+
+    seed_knowledge(user.id, [r.model_dump() for r in payload.subject_ratings])
     return {"status": "complete"}
 
 

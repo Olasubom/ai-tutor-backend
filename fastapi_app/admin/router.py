@@ -5,7 +5,7 @@ import io
 import uuid
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -227,6 +227,19 @@ def list_courses(
         q = q.where(Course.level == normalized_level)
     rows = db.scalars(q.order_by(Course.course_code)).all()
     return [_course_dict(c) for c in rows]
+
+
+@router.get("/courses/by-ids")
+def get_courses_by_ids(
+    db: Annotated[Session, Depends(get_db)],
+    ids: str = Query(..., description="Comma-separated course IDs"),
+) -> List[dict]:
+    id_list = [i.strip() for i in ids.split(",") if i.strip()]
+    if not id_list:
+        return []
+    rows = db.scalars(select(Course).where(Course.id.in_(id_list))).all()
+    by_id = {c.id: _course_dict(c) for c in rows}
+    return [by_id[i] for i in id_list if i in by_id]
 
 
 @router.put("/courses/{course_id}")
@@ -520,3 +533,36 @@ def delete_lecturer(
     db.delete(user)
     db.commit()
     return {"ok": True, "message": "Lecturer deleted"}
+
+
+@router.post("/content/ingest-for-courses")
+def ingest_content_for_courses(
+    background_tasks: BackgroundTasks,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[dict, Depends(require_role("admin"))],
+    college_id: Optional[str] = Query(default=None),
+    department_id: Optional[str] = Query(default=None),
+    max_per_topic: int = Query(default=3, ge=1, le=20),
+) -> dict:
+    """
+    Derive topics from course titles in the catalog and trigger YouTube + ebook ingestion.
+    """
+    from fastapi_app.services.content_ingestion_service import run_ingestion_for_topics, topics_from_courses
+
+    topics = topics_from_courses(db, college_id=college_id, department_id=department_id)
+    if not topics:
+        raise HTTPException(status_code=404, detail="No courses found for this filter")
+
+    background_tasks.add_task(run_ingestion_for_topics, topics, max_per_topic)
+    return {
+        "message": f"Ingestion started for {len(topics)} topics",
+        "topics": topics,
+        "status": "processing",
+    }
+
+
+@router.get("/content/ingestion-status")
+def ingestion_status(_: Annotated[dict, Depends(require_role("admin"))]) -> dict:
+    from fastapi_app.services.content_ingestion_service import read_ingestion_status
+
+    return read_ingestion_status()

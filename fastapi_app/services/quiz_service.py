@@ -118,6 +118,8 @@ def submit_quiz(
     learner_id: str,
     quiz_id: str,
     responses: List[dict],
+    *,
+    content_item_id: Optional[str] = None,
 ) -> dict:
     quiz = read_json(f"quizzes/{learner_id}/{quiz_id}.json", None)
     if not quiz:
@@ -191,6 +193,23 @@ def submit_quiz(
         },
     )
     record_engagement(learner_id, "quiz_submit", {"topic": topic, "questions": total, "score": score})
+
+    if content_item_id:
+        try:
+            from agency.core.tools.database import Database
+            from fastapi_app.services.module_progress_service import upsert_module_progress
+
+            db = Database()
+            with db._SessionLocal() as session:  # noqa: SLF001
+                upsert_module_progress(
+                    session,
+                    learner_id=learner_id,
+                    content_item_id=content_item_id,
+                    percent_complete=100,
+                    status="completed",
+                )
+        except Exception:
+            pass
 
     recommendation_triggered = False
     try:

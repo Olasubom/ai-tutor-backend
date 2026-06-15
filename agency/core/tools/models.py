@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime
 from typing import Any, Dict, Optional
 
@@ -7,6 +8,10 @@ from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Integer, String,
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from agency.core.tools.database import Base
+
+
+def _uuid() -> str:
+    return str(uuid.uuid4())
 
 
 class Learner(Base):
@@ -86,9 +91,31 @@ class ContentItem(Base):
     provider: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     quality_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    course_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("courses.id"), nullable=True, index=True)
+    module_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, default="approved", index=True)
+    uploaded_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     payload_json: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class ModuleProgress(Base):
+    __tablename__ = "module_progress"
+    __table_args__ = (
+        UniqueConstraint("learner_id", "content_item_id", name="uq_learner_content_progress"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    learner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    content_item_id: Mapped[str] = mapped_column(String(128), ForeignKey("content_items.item_id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="not_started", nullable=False)
+    percent_complete: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_updated: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),

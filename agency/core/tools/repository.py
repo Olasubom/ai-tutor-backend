@@ -162,6 +162,7 @@ class LearnerRepository:
         """Insert/update content items used by recommendation engine."""
         written = 0
         with self._session() as s:
+            pending: Dict[str, ContentItem] = {}
             for item in items:
                 if not isinstance(item, dict):
                     continue
@@ -172,8 +173,11 @@ class LearnerRepository:
 
                 row = s.get(ContentItem, item_id)
                 if row is None:
+                    row = pending.get(item_id)
+                if row is None:
                     row = ContentItem(item_id=item_id, title=title)
                     s.add(row)
+                    pending[item_id] = row
                 row.title = title
                 row.topic = str(item.get("topic")) if item.get("topic") is not None else None
                 row.modality = str(item.get("modality")) if item.get("modality") is not None else None
@@ -185,6 +189,16 @@ class LearnerRepository:
                 row.quality_score = (
                     float(item.get("quality_score")) if item.get("quality_score") is not None else None
                 )
+                if item.get("course_id") is not None:
+                    row.course_id = str(item.get("course_id"))
+                if item.get("module_order") is not None:
+                    row.module_order = int(item.get("module_order"))
+                if item.get("status") is not None:
+                    row.status = str(item.get("status"))
+                elif row.status is None:
+                    row.status = "approved"
+                if item.get("uploaded_by") is not None:
+                    row.uploaded_by = str(item.get("uploaded_by"))
                 row.payload_json = item
                 written += 1
         return written
@@ -219,6 +233,10 @@ class LearnerRepository:
                 payload.setdefault("provider", row.provider)
                 payload.setdefault("source_url", row.source_url)
                 payload.setdefault("quality_score", row.quality_score)
+                payload.setdefault("course_id", row.course_id)
+                payload.setdefault("module_order", row.module_order)
+                payload.setdefault("status", row.status)
+                payload.setdefault("uploaded_by", row.uploaded_by)
                 out.append(payload)
             return out
 

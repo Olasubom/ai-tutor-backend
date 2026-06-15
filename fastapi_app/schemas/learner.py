@@ -58,6 +58,8 @@ class TutorRecommendResponse(BaseModel):
     adaptive_path: List[Dict[str, Any]] = Field(default_factory=list)
     memory_used: Optional[Dict[str, Any]] = None
     timestamp: str
+    status: Optional[str] = None
+    message: Optional[str] = None
 
 
 class LearnerProfileResponse(BaseModel):
@@ -106,3 +108,26 @@ class BackfillSourceOriginResponse(BaseModel):
     counts: Dict[str, int] = Field(default_factory=dict)
     catalog_size: int
     timestamp: str
+
+
+class CurriculumResponse(BaseModel):
+    learner_id: str
+    course_id: str
+    course_code: str
+    course_title: str
+    modules: List[Dict[str, Any]] = Field(default_factory=list)
+    source: Optional[str] = None
+    status: str
+    message: Optional[str] = None
+
+
+class CurriculumUpdateRequest(BaseModel):
+    learner_id: str
+    course_id: str
+
+
+class ModuleProgressUpdate(BaseModel):
+    learner_id: Optional[str] = None
+    content_item_id: str
+    percent_complete: int = Field(ge=0, le=100)
+    status: str

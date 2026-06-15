@@ -69,12 +69,7 @@ export default function GeneratingModel() {
       }
     }
 
-    const events = subjectRatings.map(({ topic, proficiency }) => ({
-      topic,
-      correct: proficiency === 'comfortable' || proficiency === 'proficient',
-    }));
-
-    await getRecommendations({ learner_id: user_id, message: 'initial recommendations', events });
+    await getRecommendations({ learner_id: user_id, message: 'initial recommendations' });
     setDone(2);
 
     useAuthStore.getState().setOnboardingComplete(user_id);

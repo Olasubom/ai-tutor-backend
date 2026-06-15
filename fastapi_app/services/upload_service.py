@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from agency.core.tools.database import Database
+from agency.core.tools.models import ContentItem
 from fastapi_app.services.memory_files import read_json, write_json
 
 logger = logging.getLogger(__name__)
@@ -86,8 +88,10 @@ def create_material_record(
     size_mb: float,
     title: str,
     description: Optional[str],
-    subject: Optional[str],
-    course_code: Optional[str],
+    course_id: str,
+    course_code: str,
+    course_title: str,
+    module_order: Optional[int],
     uploaded_by: str,
     uploaded_by_name: str,
     college: Optional[str],
@@ -103,8 +107,10 @@ def create_material_record(
         "file_size_mb": round(size_mb, 2),
         "title": title,
         "description": description,
-        "subject": subject,
+        "course_id": course_id,
         "course_code": course_code,
+        "course_title": course_title,
+        "module_order": module_order,
         "uploaded_by": uploaded_by,
         "uploaded_by_name": uploaded_by_name,
         "college": college,
@@ -116,10 +122,79 @@ def create_material_record(
     }
 
 
+def sync_content_item(record: dict) -> None:
+    """Upsert a ContentItem row linked directly to the upload's course."""
+    try:
+        from agency.core.context import get_runtime
+
+        runtime = get_runtime()
+        if runtime.repository is None:
+            logger.warning("sync_content_item_skipped_no_repository", extra={"upload_id": record.get("id")})
+            return
+
+        modality_map = {
+            "pdf": "text",
+            "video": "video",
+            "audio": "read_aloud",
+            "text": "text",
+            "document": "text",
+            "slides": "text",
+        }
+        item_id = f"upload_{record['id']}"
+        runtime.repository.upsert_content_items(
+            [
+                {
+                    "id": item_id,
+                    "title": record["title"],
+                    "topic": record.get("course_title") or "general",
+                    "description": record.get("description") or "",
+                    "modality": modality_map.get(record.get("file_type", ""), "text"),
+                    "source_type": record.get("file_type"),
+                    "provider": record.get("uploaded_by_name") or "lecturer",
+                    "source_url": record.get("url") or "",
+                    "source_origin": "lecturer_upload",
+                    "course_id": record.get("course_id"),
+                    "course_code": record.get("course_code"),
+                    "course_title": record.get("course_title"),
+                    "module_order": record.get("module_order"),
+                    "status": record.get("status") or "pending_review",
+                    "uploaded_by": record.get("uploaded_by"),
+                    "department": record.get("department"),
+                }
+            ]
+        )
+        runtime.catalog = runtime.repository.list_content_items(limit=5000) or runtime.catalog
+        logger.info("sync_content_item_ok", extra={"upload_id": record.get("id"), "item_id": item_id})
+    except Exception:
+        logger.exception("sync_content_item_failed", extra={"upload_id": record.get("id")})
+
+
+def update_content_item_status(upload_id: str, status: str) -> None:
+    """Update review status on the linked ContentItem after admin approval."""
+    try:
+        from agency.core.context import get_runtime
+
+        db = Database()
+        item_id = f"upload_{upload_id}"
+        with db._SessionLocal() as session:  # noqa: SLF001
+            row = session.get(ContentItem, item_id)
+            if row is None:
+                return
+            row.status = status
+            session.commit()
+
+        runtime = get_runtime()
+        if runtime.repository is not None:
+            runtime.catalog = runtime.repository.list_content_items(limit=5000) or runtime.catalog
+    except Exception:
+        logger.exception("update_content_item_status_failed", extra={"upload_id": upload_id})
+
+
 def append_material(record: dict) -> dict:
     materials = _load_materials()
     materials.append(record)
     _save_materials(materials)
+    sync_content_item(record)
     return record
 
 
@@ -168,6 +243,8 @@ def update_material(upload_id: str, patch: dict) -> Optional[dict]:
     if updated is None:
         return None
     _save_materials(materials)
+    if "status" in patch:
+        update_content_item_status(upload_id, str(patch["status"]))
     return updated
 
 
@@ -182,46 +259,20 @@ def delete_material(upload_id: str) -> bool:
         shutil.rmtree(upload_dir, ignore_errors=True)
 
     _save_materials([m for m in materials if m.get("id") != upload_id])
+
+    try:
+        db = Database()
+        with db._SessionLocal() as session:  # noqa: SLF001
+            row = session.get(ContentItem, f"upload_{upload_id}")
+            if row:
+                session.delete(row)
+                session.commit()
+    except Exception:
+        logger.exception("delete_content_item_failed", extra={"upload_id": upload_id})
+
     return True
 
 
 def ingest_uploaded_material(record: dict) -> None:
-    """Ingest an approved upload into the recommendation content store."""
-    try:
-        from agency.core.context import get_runtime
-
-        runtime = get_runtime()
-        if runtime.repository is None:
-            logger.warning("ingest_skipped_no_repository", extra={"upload_id": record.get("id")})
-            return
-
-        modality_map = {
-            "pdf": "text",
-            "video": "video",
-            "audio": "read_aloud",
-            "text": "text",
-            "document": "text",
-            "slides": "text",
-        }
-        item_id = f"upload_{record['id']}"
-        runtime.repository.upsert_content_items(
-            [
-                {
-                    "id": item_id,
-                    "title": record["title"],
-                    "topic": record.get("subject") or record.get("course_code") or "general",
-                    "modality": modality_map.get(record.get("file_type", ""), "text"),
-                    "source_type": record.get("file_type"),
-                    "provider": record.get("uploaded_by_name") or "lecturer",
-                    "source_url": record.get("url") or "",
-                    "description": record.get("description") or "",
-                    "source_origin": "lecturer_upload",
-                    "course_code": record.get("course_code"),
-                    "department": record.get("department"),
-                }
-            ]
-        )
-        runtime.catalog = runtime.repository.list_content_items(limit=5000) or runtime.catalog
-        logger.info("ingest_upload_ok", extra={"upload_id": record.get("id"), "title": record.get("title")})
-    except Exception:
-        logger.exception("ingest_upload_failed", extra={"upload_id": record.get("id")})
+    """Ensure approved upload is synced to content_items (legacy hook)."""
+    sync_content_item(record)

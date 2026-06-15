@@ -17,7 +17,7 @@ import { useToastStore } from '@/components/ui/Toast';
 import { patchProfile } from '@/api/profile';
 import { getMe } from '@/api/auth';
 import { onboardingStep2, onboardingStep4 } from '@/api/onboarding';
-import { fetchCourses, fetchDepartments } from '@/api/courses';
+import { fetchCoursesByIds, fetchDepartments } from '@/api/courses';
 import { fetchAdminCourses } from '@/api/adminCourses';
 import { COURSE_LEVEL_OPTIONS } from '@/lib/courseLevel';
 import { filterCoursesBySemester, type SemesterFilter } from '@/lib/courseSemester';
@@ -73,12 +73,12 @@ export default function Settings() {
     queryFn: () => fetchAdminCourses(pickerDept, pickerLevel),
     enabled: courseModal && !!pickerDept,
   });
-  const deptCoursesQ = useQuery({
-    queryKey: ['dept-courses-all', pickerDept],
-    queryFn: () => fetchCourses(pickerDept),
-    enabled: tab === 'courses' && !!pickerDept,
+  const enrolledDetailsQ = useQuery({
+    queryKey: ['enrolled-course-details', enrolled],
+    queryFn: () => fetchCoursesByIds(enrolled),
+    enabled: tab === 'courses' && enrolled.length > 0,
   });
-  const courseByCode = Object.fromEntries((deptCoursesQ.data ?? []).map((c) => [c.course_code, c]));
+  const enrolledCourseDetails = enrolledDetailsQ.data ?? [];
   const filteredPickerCourses = filterCoursesBySemester(coursesQ.data ?? [], semesterFilter);
 
   const prefsQ = useQuery({
@@ -138,6 +138,8 @@ export default function Settings() {
       });
       toast('Courses updated', 'success');
       qc.invalidateQueries({ queryKey: ['auth-me'] });
+      qc.invalidateQueries({ queryKey: ['enrolled-course-details'] });
+      qc.invalidateQueries({ queryKey: ['enrolled-details'] });
     } catch {
       toast('Failed to update courses', 'error');
     }
@@ -213,32 +215,30 @@ export default function Settings() {
                 description="Add courses from your department to personalize your learning path."
                 action={{ label: 'Add Courses', onClick: () => setCourseModal(true) }}
               />
+            ) : enrolledDetailsQ.isLoading ? (
+              <p className="text-[14px] text-text-muted">Loading enrolled courses…</p>
+            ) : enrolledCourseDetails.length === 0 ? (
+              <p className="text-[14px] text-text-muted">No courses enrolled yet.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {enrolled.map((code) => {
-                  const course = courseByCode[code];
-                  return (
-                    <div
-                      key={code}
-                      className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
+                {enrolledCourseDetails.map((course) => (
+                  <div
+                    key={course.id}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-gray-100 px-3 py-2 text-sm"
+                  >
+                    <span className="font-semibold text-gray-800">{course.course_code}</span>
+                    <span className="max-w-[200px] truncate text-gray-600">{course.course_title}</span>
+                    <SemesterBadge semester={course.semester} />
+                    <button
+                      type="button"
+                      onClick={() => saveCourses(enrolled.filter((id) => id !== course.id))}
+                      className="ml-1 flex-shrink-0 text-gray-400 hover:text-red-500"
+                      title="Remove course"
                     >
-                      <span className="text-[13px] font-semibold">{code}</span>
-                      {course && (
-                        <>
-                          <span className="max-w-[140px] truncate text-[13px] text-text-muted">{course.course_title}</span>
-                          <SemesterBadge semester={course.semester} />
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => saveCourses(enrolled.filter((c) => c !== code))}
-                        className="text-text-muted hover:text-error"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  );
-                })}
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
             <Button variant="secondary" onClick={() => { setPickerSelected(enrolled); setCourseModal(true); }}>
@@ -332,10 +332,10 @@ export default function Settings() {
                 <CourseSelectItem
                   key={c.id}
                   course={c}
-                  selected={pickerSelected.includes(c.course_code)}
+                  selected={pickerSelected.includes(c.id)}
                   onClick={() =>
                     setPickerSelected((p) =>
-                      p.includes(c.course_code) ? p.filter((x) => x !== c.course_code) : [...p, c.course_code],
+                      p.includes(c.id) ? p.filter((x) => x !== c.id) : [...p, c.id],
                     )
                   }
                 />

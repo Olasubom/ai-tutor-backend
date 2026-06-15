@@ -107,26 +107,31 @@ class TutorRuntime:
         self.catalog = enriched
 
     def _normalize_catalog_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        normalized = dict(item)
-        modality = str(item.get("modality", "")).lower()
-        source_type = item.get("source_type")
-        if not source_type:
-            if modality in {"video"}:
-                source_type = "youtube"
-                normalized.setdefault("provider", "YouTube")
-            elif modality in {"text", "read_aloud"}:
-                source_type = "ebook"
-                normalized.setdefault("provider", "OpenLibrary")
-            elif modality in {"interactive", "game"}:
-                source_type = "internal"
-                normalized.setdefault("provider", "AI Tutor")
-            else:
-                source_type = "internal"
-        normalized.setdefault("source_type", source_type)
-        normalized.setdefault("source_url", "")
-        normalized.setdefault("quality_score", 0.6)
-        normalized.setdefault("source_origin", "seeded")
-        return normalized
+        try:
+            from fastapi_app.services.content_type import normalize_content_item
+
+            return normalize_content_item(item)
+        except Exception:
+            normalized = dict(item)
+            modality = str(item.get("modality", "")).lower()
+            source_type = item.get("source_type")
+            if not source_type:
+                if modality in {"video"}:
+                    source_type = "youtube"
+                    normalized.setdefault("provider", "YouTube")
+                elif modality in {"text", "read_aloud"}:
+                    source_type = "ebook"
+                    normalized.setdefault("provider", "OpenLibrary")
+                elif modality in {"interactive", "game"}:
+                    source_type = "internal"
+                    normalized.setdefault("provider", "AI Tutor")
+                else:
+                    source_type = "internal"
+            normalized.setdefault("source_type", source_type)
+            normalized.setdefault("source_url", "")
+            normalized.setdefault("quality_score", 0.6)
+            normalized.setdefault("source_origin", "seeded")
+            return normalized
 
     def _load_skill_graph(self) -> None:
         graph_path = self.agency_root / "data" / "sample_data" / "skill_graph.json"

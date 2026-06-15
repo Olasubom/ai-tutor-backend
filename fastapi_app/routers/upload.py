@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from fastapi_app.admin.models import Course
 from fastapi_app.auth.models import User
 from fastapi_app.auth.utils import get_current_user, require_role
 from fastapi_app.database import get_db
@@ -27,15 +28,19 @@ async def upload_material(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str = Form(...),
+    course_id: str = Form(...),
     description: Optional[str] = Form(None),
-    subject: Optional[str] = Form(None),
-    course_code: Optional[str] = Form(None),
+    module_order: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     current: Annotated[dict, Depends(get_current_user)] = None,
 ):
     user = _get_user(db, current)
     if user.role not in {"lecturer", "admin"}:
         raise HTTPException(status_code=403, detail="Only lecturers and admins can upload materials")
+
+    course = db.get(Course, course_id.strip())
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
 
     content_type = upload_service.resolve_content_type(file.filename or "file", file.content_type)
     contents = await file.read()
@@ -54,8 +59,10 @@ async def upload_material(
         size_mb=size_mb,
         title=title.strip(),
         description=description,
-        subject=subject,
-        course_code=course_code,
+        course_id=course.id,
+        course_code=course.course_code,
+        course_title=course.course_title,
+        module_order=module_order,
         uploaded_by=user.id,
         uploaded_by_name=user.name,
         college=user.college,
@@ -71,6 +78,8 @@ async def upload_material(
     return {
         "id": upload_id,
         "title": title.strip(),
+        "course_id": course.id,
+        "course_code": course.course_code,
         "file_type": file_type,
         "file_size_mb": round(size_mb, 2),
         "status": status,

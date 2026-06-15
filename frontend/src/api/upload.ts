@@ -10,8 +10,10 @@ export interface UploadedMaterial {
   file_size_mb: number;
   title: string;
   description?: string | null;
-  subject?: string | null;
+  course_id?: string | null;
   course_code?: string | null;
+  course_title?: string | null;
+  module_order?: number | null;
   uploaded_by: string;
   uploaded_by_name: string;
   college?: string | null;
@@ -22,14 +24,29 @@ export interface UploadedMaterial {
   rejection_reason?: string | null;
 }
 
+export interface LecturerCourseOption {
+  id: string;
+  code: string;
+  title: string;
+  level: string;
+  semester: string;
+}
+
 export interface UploadMaterialResponse {
   id: string;
   title: string;
+  course_id: string;
+  course_code: string;
   file_type: string;
   file_size_mb: number;
   status: string;
   message: string;
   url: string;
+}
+
+export async function getLecturerCourses(): Promise<LecturerCourseOption[]> {
+  const { data } = await apiClient.get<LecturerCourseOption[]>('/lecturer/my-courses');
+  return data;
 }
 
 export async function uploadMaterial(
@@ -91,4 +108,23 @@ export async function downloadMaterial(id: string, filename: string): Promise<vo
 
 export function materialDownloadUrl(id: string): string {
   return `${getApiBaseUrl()}/upload/material/${id}/download`;
+}
+
+export async function openMaterialPreview(id: string): Promise<void> {
+  const { token } = useAuthStore.getState();
+  const response = await axios.get(materialDownloadUrl(id), {
+    responseType: 'blob',
+    headers: {
+      Authorization: token ? `Bearer ${token}` : '',
+      'X-API-Key': localStorage.getItem('aitutor_api_key') || import.meta.env.VITE_API_KEY || 'change_me',
+    },
+  });
+  const url = window.URL.createObjectURL(response.data);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+}
+
+export function uploadIdFromContentItemId(contentItemId?: string): string | null {
+  if (!contentItemId?.startsWith('upload_')) return null;
+  return contentItemId.replace(/^upload_/, '');
 }

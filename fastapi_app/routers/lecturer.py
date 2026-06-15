@@ -1,7 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from fastapi_app.admin.models import Course, Department
+from fastapi_app.auth.models import User
+from fastapi_app.auth.utils import get_current_user, require_role
+from fastapi_app.database import get_db
 from fastapi_app.schemas.platform import LecturerEnsureRequest, SendResourceRequest
 from fastapi_app.security import require_api_key
 from fastapi_app.services import lecturer_service, notifications_service
@@ -9,6 +17,40 @@ from fastapi_app.services.memory_files import read_json
 from agency.core.context import get_runtime
 
 router = APIRouter(prefix="/lecturer", tags=["Lecturer"])
+
+
+@router.get("/my-courses")
+def get_lecturer_courses(
+    db: Session = Depends(get_db),
+    current: Annotated[dict, Depends(require_role("lecturer", "admin"))] = None,
+) -> list[dict]:
+    """Courses a lecturer can upload materials for (by department)."""
+    user = db.get(User, current["user_id"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.role == "admin" and not user.department:
+        courses = db.scalars(select(Course).order_by(Course.course_code)).all()
+    else:
+        if not user.department:
+            return []
+        department = db.scalars(select(Department).where(Department.name == user.department)).first()
+        if not department:
+            return []
+        courses = db.scalars(
+            select(Course).where(Course.department_id == department.id).order_by(Course.course_code)
+        ).all()
+
+    return [
+        {
+            "id": c.id,
+            "code": c.course_code,
+            "title": c.course_title,
+            "level": c.level,
+            "semester": c.semester or "Both",
+        }
+        for c in courses
+    ]
 
 
 @router.post("/ensure/{lecturer_id}")

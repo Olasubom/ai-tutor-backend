@@ -18,6 +18,8 @@ import {
   getLecturers,
   getSystemHealth,
   getTestimonials,
+  getIngestionStatus,
+  ingestContentForCourses,
   rejectLecturer,
   removeCollege,
   revokeNucId,
@@ -67,6 +69,9 @@ export default function AdminDashboard() {
   const [newStaffLabel, setNewStaffLabel] = useState('');
   const [newStaffDept, setNewStaffDept] = useState('');
   const [newStaffCollege, setNewStaffCollege] = useState('');
+  const [contentCollege, setContentCollege] = useState('');
+  const [contentDept, setContentDept] = useState('');
+  const [ingestingContent, setIngestingContent] = useState(false);
 
   const pending = useQuery({ queryKey: ['admin-pending'], queryFn: getPendingLecturers });
   const lecturers = useQuery({ queryKey: ['admin-lecturers'], queryFn: getLecturers });
@@ -74,8 +79,18 @@ export default function AdminDashboard() {
   const colleges = useQuery({ queryKey: ['admin-colleges'], queryFn: getColleges });
   const testimonials = useQuery({ queryKey: ['admin-testimonials'], queryFn: getTestimonials });
   const nucIds = useQuery({ queryKey: ['admin-nuc-ids'], queryFn: getNucIds });
+  const ingestionStatus = useQuery({
+    queryKey: ['admin-ingestion-status'],
+    queryFn: getIngestionStatus,
+    refetchInterval: 30_000,
+  });
 
   const departments = useQuery({ queryKey: ['admin-departments'], queryFn: () => fetchDepartments() });
+  const contentDepartments = useQuery({
+    queryKey: ['admin-departments', contentCollege],
+    queryFn: () => fetchDepartments(contentCollege || undefined),
+    enabled: !!contentCollege,
+  });
   const courses = useQuery({
     queryKey: ['admin-courses', courseDept, courseLevel],
     queryFn: () => fetchCourses(courseDept, courseLevel || undefined),
@@ -422,6 +437,104 @@ export default function AdminDashboard() {
       </Card>
 
       <Card className="p-6">
+        <h2 className="text-[18px] font-bold">Content Library</h2>
+        <p className="mt-1 text-[14px] text-text-muted">
+          Generate learning resources (videos and ebooks) based on your course catalog. This populates recommendations
+          and curriculum content for students.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <Select
+            label="College"
+            value={contentCollege}
+            onChange={(e) => {
+              setContentCollege(e.target.value);
+              setContentDept('');
+            }}
+            options={[
+              { value: '', label: 'All Colleges' },
+              ...(colleges.data ?? []).map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
+          <Select
+            label="Department"
+            value={contentDept}
+            onChange={(e) => setContentDept(e.target.value)}
+            options={[
+              { value: '', label: contentCollege ? 'All Departments' : 'Select college first' },
+              ...(contentCollege ? (contentDepartments.data ?? []) : departmentRows).map((d) => ({
+                value: d.id,
+                label: d.name,
+              })),
+            ]}
+          />
+          <div className="flex items-end">
+            <Button
+              type="button"
+              className="w-full"
+              disabled={ingestingContent}
+              onClick={async () => {
+                setIngestingContent(true);
+                try {
+                  const result = await ingestContentForCourses({
+                    college_id: contentCollege || undefined,
+                    department_id: contentDept || undefined,
+                  });
+                  toast(
+                    `Content generation started for ${result.topics.length} topics. Check back in a few minutes.`,
+                    'success',
+                  );
+                  qc.invalidateQueries({ queryKey: ['admin-ingestion-status'] });
+                } catch {
+                  toast('Failed to start content generation', 'error');
+                } finally {
+                  setIngestingContent(false);
+                }
+              }}
+            >
+              {ingestingContent ? 'Generating…' : 'Generate Content for Selected Courses'}
+            </Button>
+          </div>
+        </div>
+        {ingestingContent && (
+          <p className="mt-3 text-[13px] text-text-muted">
+            Generating content… this may take a few minutes. You can navigate away — it runs in the background.
+          </p>
+        )}
+        {ingestionStatus.data?.last_run && (
+          <div className="mt-4 rounded-lg border border-border bg-card px-4 py-3 text-[13px] text-text-secondary">
+            <div>
+              <span className="font-semibold text-text-primary">Last generation:</span>{' '}
+              {new Date(ingestionStatus.data.last_run).toLocaleString()}
+            </div>
+            <div>
+              <span className="font-semibold text-text-primary">Status:</span> {ingestionStatus.data.status ?? 'unknown'}
+            </div>
+            {typeof ingestionStatus.data.items_added === 'number' && (
+              <div>
+                <span className="font-semibold text-text-primary">Items added:</span> {ingestionStatus.data.items_added}
+              </div>
+            )}
+            {ingestionStatus.data.topics?.length ? (
+              <div className="mt-2">
+                <span className="font-semibold text-text-primary">Topics processed:</span>{' '}
+                {ingestionStatus.data.topics.slice(0, 5).join(', ')}
+                {ingestionStatus.data.topics.length > 5 ? ` (+${ingestionStatus.data.topics.length - 5} more)` : ''}
+              </div>
+            ) : null}
+            {ingestionStatus.data.errors?.length ? (
+              <div className="mt-2 rounded border border-red-100 bg-red-50 p-2 text-xs text-red-600">
+                <p className="mb-1 font-semibold">Errors:</p>
+                {ingestionStatus.data.errors.map((err, i) => {
+                  const message = typeof err === 'string' ? err : `${err.source}: ${err.error}`;
+                  return <p key={i}>{message}</p>;
+                })}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-6">
         <h2 className="text-[18px] font-bold">Courses</h2>
         <p className="mt-1 text-[14px] text-text-muted">
           Courses appear in student onboarding when they pick a department and level.
@@ -685,7 +798,7 @@ export default function AdminDashboard() {
             {pending.data.map((l) => {
               return (
                 <div
-                  key={l.id}
+                  key={l.user_id}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-4"
                 >
                   <div>
@@ -695,13 +808,13 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Button disabled={acting === l.id} onClick={() => handleApprove(l.id)}>
+                    <Button disabled={acting === l.user_id} onClick={() => handleApprove(l.user_id)}>
                       <Check className="mr-1 h-4 w-4" /> Approve
                     </Button>
                     <Button
                       variant="secondary"
-                      disabled={acting === l.id}
-                      onClick={() => handleReject(l.id)}
+                      disabled={acting === l.user_id}
+                      onClick={() => handleReject(l.user_id)}
                     >
                       <X className="mr-1 h-4 w-4" /> Reject
                     </Button>

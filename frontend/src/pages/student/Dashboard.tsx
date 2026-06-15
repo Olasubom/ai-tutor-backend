@@ -12,8 +12,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useLearnerProfile, useKnowledge, useTasks } from '@/hooks/useStudent';
 import { getHeatmap } from '@/api/engagement';
 import { completeTask } from '@/api/tasks';
+import { getMasteryBarColor, getMasteryLabel, getGlobalMasteryDescriptor } from '@/lib/masteryLabels';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/components/ui/Toast';
+import { cn } from '@/lib/utils';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -70,6 +72,7 @@ export default function Dashboard() {
   const pendingTasks = (tasks.data ?? []).filter((t) => t.status !== 'completed' && !(t as { done?: boolean }).done);
   const weekData = heatmap.data ?? [];
   const hasActivity = weekData.some((d) => d.count > 0);
+  const modulesCompleted = p?.modules_completed ?? 0;
 
   const subtitle =
     mastery > 0
@@ -118,7 +121,44 @@ export default function Dashboard() {
         <StatCard label="Learning Hours" value={String(p?.total_study_hours ?? 0)} />
         <StatCard label="Modules Completed" value={String(p?.modules_completed ?? 0)} />
         <StatCard label="Current Streak" value={String(p?.current_streak ?? 0)} />
-        <StatCard label="Global Mastery" value={mastery > 0 ? `${mastery}%` : '--'} />
+        <Card className="p-6">
+          <div className="mb-4 flex items-center gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Knowledge Mastery</span>
+            <div className="group relative">
+              <svg
+                className="h-3.5 w-3.5 cursor-help text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <div
+                className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-xs text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100"
+              >
+                <p className="mb-1 font-semibold">What is Knowledge Mastery?</p>
+                <p className="leading-relaxed text-gray-300">
+                  This is your AI-estimated probability of knowing your enrolled topics. It is seeded from your
+                  onboarding self-assessment and updates automatically after every quiz. It is not a course completion
+                  score.
+                </p>
+                <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+              </div>
+            </div>
+          </div>
+          <div className="stat-number text-text-primary">{mastery > 0 ? `${mastery}%` : '--'}</div>
+          {mastery > 0 && (
+            <p className="mt-1 text-xs text-gray-400">{getGlobalMasteryDescriptor(mastery)}</p>
+          )}
+          {modulesCompleted === 0 && (
+            <p className="mt-1 text-xs text-blue-500">Seeded from your onboarding assessment. Take a quiz to update it.</p>
+          )}
+        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -133,15 +173,26 @@ export default function Dashboard() {
                 action={{ label: 'Go to Curriculum', onClick: () => navigate('/student/curriculum') }}
               />
             ) : (
-              subjects.slice(0, 6).map((s) => (
-                <div key={s.topic}>
-                  <div className="mb-1 flex justify-between text-[13px]">
-                    <span>{s.topic}</span>
-                    <span>{s.mastery}%</span>
+              subjects.slice(0, 6).map((s) => {
+                const status = getMasteryLabel(s.mastery);
+                return (
+                  <div key={s.topic}>
+                    <div className="mb-1 flex items-center justify-between text-[13px]">
+                      <span>{s.topic}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={cn('text-xs font-semibold', status.color)}>{status.label}</span>
+                        <span className="font-bold text-gray-800">{s.mastery}%</span>
+                      </div>
+                    </div>
+                    <div className="h-[5px] w-full overflow-hidden rounded-full bg-border">
+                      <div
+                        className={cn('h-full rounded-full transition-all', getMasteryBarColor(s.mastery))}
+                        style={{ width: `${s.mastery}%` }}
+                      />
+                    </div>
                   </div>
-                  <ProgressBar value={s.mastery} />
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </Card>

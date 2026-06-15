@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowDown, ArrowUp, Check, ChevronDown, X } from 'lucide-react';
+import { Check, ChevronDown, X } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -28,6 +28,8 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 
 export default function Quiz() {
   const { topic = 'General' } = useParams();
+  const [searchParams] = useSearchParams();
+  const contentItemId = searchParams.get('content_item_id') ?? undefined;
   const decodedTopic = decodeURIComponent(topic);
   const { learnerId } = useAuth();
   const navigate = useNavigate();
@@ -102,7 +104,7 @@ export default function Quiz() {
         selected_option: answers[q.question_id] ?? 0,
         time_taken_seconds: times[q.question_id] ?? 1,
       }));
-      const data = await submitQuiz(learnerId, quiz.quiz_id, responses);
+      const data = await submitQuiz(learnerId, quiz.quiz_id, responses, contentItemId);
       setResults(data);
       setStep('results');
       toast('Results ready. Mastery updated.', 'success');
@@ -211,7 +213,6 @@ export default function Quiz() {
 
   if (step === 'results' && results) {
     const mu = results.mastery_update;
-    const up = mu.new_mastery >= mu.previous_mastery;
     return (
       <div className="mx-auto max-w-3xl space-y-6">
         <Card className="p-8 text-center">
@@ -219,14 +220,49 @@ export default function Quiz() {
             {results.score}/{results.total}
           </div>
           <div className="text-text-secondary">{Math.round(results.percentage)}% · {results.time_taken_seconds}s total</div>
-          <div className="mt-4 flex items-center justify-center gap-2 text-[18px] font-semibold">
-            {up ? <ArrowUp className="text-teal" /> : <ArrowDown className="text-error" />}
-            {Math.round(mu.previous_mastery * 100)}% → {Math.round(mu.new_mastery * 100)}% mastery
-          </div>
         </Card>
 
+        {results.mastery_update && (
+          <Card className="p-4">
+            <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-500">Knowledge Model Updated</h3>
+            <div className="flex items-center justify-between">
+              <div className="text-center">
+                <p className="text-2xl font-extrabold text-gray-400">
+                  {Math.round(results.mastery_update.previous_mastery * 100)}%
+                </p>
+                <p className="text-xs text-gray-400">Before quiz</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="h-px w-8 bg-gray-200" />
+                {results.mastery_update.new_mastery > results.mastery_update.previous_mastery ? (
+                  <span className="text-lg font-bold text-green-500">↑</span>
+                ) : (
+                  <span className="text-lg font-bold text-red-400">↓</span>
+                )}
+                <div className="h-px w-8 bg-gray-200" />
+              </div>
+              <div className="text-center">
+                <p
+                  className={cn(
+                    'text-2xl font-extrabold',
+                    results.mastery_update.new_mastery > results.mastery_update.previous_mastery
+                      ? 'text-green-600'
+                      : 'text-red-500',
+                  )}
+                >
+                  {Math.round(results.mastery_update.new_mastery * 100)}%
+                </p>
+                <p className="text-xs text-gray-400">After quiz</p>
+              </div>
+            </div>
+            <p className="mt-3 text-center text-xs text-gray-400">
+              Your knowledge model updated based on your quiz performance using Bayesian Knowledge Tracing.
+            </p>
+          </Card>
+        )}
+
         <Card className="p-6">
-          <h3 className="font-bold">Knowledge Model Updated</h3>
+          <h3 className="font-bold">BKT Parameters</h3>
           <div className="mt-4 space-y-2 text-[14px]">
             <div>Initial Mastery (p_L0): {Math.round(mu.bkt_params.p_l0 * 100)}%</div>
             <div>Learning Rate (p_T): {Math.round(mu.bkt_params.p_t * 100)}% per attempt</div>

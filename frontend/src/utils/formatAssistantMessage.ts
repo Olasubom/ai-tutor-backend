@@ -1,5 +1,48 @@
 const JSON_FENCE_RE = /```(?:json)?\s*([\s\S]*?)```/gi;
 
+function normalizeTitle(title: unknown): string {
+  return String(title ?? '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function unifiedResourceList(data: Record<string, unknown>): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  const unified: Record<string, unknown>[] = [];
+
+  const recs = data.recommendations;
+  if (Array.isArray(recs)) {
+    for (const rec of recs) {
+      if (!rec || typeof rec !== 'object') continue;
+      const item = rec as Record<string, unknown>;
+      const key = normalizeTitle(item.title ?? item.topic);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      unified.push(item);
+    }
+  }
+
+  const adaptive = data.adaptive_path;
+  if (Array.isArray(adaptive)) {
+    for (const step of adaptive) {
+      if (!step || typeof step !== 'object') continue;
+      const item = step as Record<string, unknown>;
+      const key = normalizeTitle(item.title ?? item.topic);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      unified.push(item);
+    }
+  }
+
+  return unified;
+}
+
+function looksLikeResourceList(text: string): boolean {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines.filter((l) => /^\d+\./.test(l)).length >= 2;
+}
+
 function formatStructuredPayload(data: unknown): string {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return '';
 
@@ -28,14 +71,12 @@ function formatStructuredPayload(data: unknown): string {
     parts.push(notes.trim());
   }
 
-  const recs = obj.recommendations;
-  if (Array.isArray(recs) && recs.length) {
-    parts.push('**Recommended for you**');
-    recs.slice(0, 6).forEach((rec, i) => {
-      if (!rec || typeof rec !== 'object') return;
-      const item = rec as Record<string, unknown>;
+  const resources = unifiedResourceList(obj);
+  if (resources.length) {
+    parts.push('**Study recommendations**');
+    resources.slice(0, 6).forEach((item, i) => {
       const title = String(item.title ?? item.topic ?? 'Resource');
-      const duration = item.duration_minutes;
+      const duration = item.duration_minutes ?? item.estimated_minutes;
       const modality = item.modality ?? item.source_type;
       const reasons = (item.reasons as string[]) ?? (item.reason ? [String(item.reason)] : []);
       const meta: string[] = [];
@@ -44,22 +85,8 @@ function formatStructuredPayload(data: unknown): string {
       let line = `${i + 1}. **${title}**`;
       if (meta.length) line += ` (${meta.join(', ')})`;
       parts.push(line);
-      reasons.slice(0, 2).forEach((reason) => {
-        if (reason) parts.push(`   - ${reason}`);
-      });
-    });
-  }
-
-  const adaptive = obj.adaptive_path;
-  if (Array.isArray(adaptive) && adaptive.length) {
-    parts.push('**Suggested learning path**');
-    adaptive.slice(0, 5).forEach((step, i) => {
-      if (step && typeof step === 'object') {
-        const s = step as Record<string, unknown>;
-        parts.push(`${i + 1}. ${String(s.title ?? s.topic ?? s.step ?? `Step ${i + 1}`)}`);
-      } else if (step) {
-        parts.push(`${i + 1}. ${String(step)}`);
-      }
+      const reason = reasons.find(Boolean);
+      if (reason) parts.push(`   - ${reason}`);
     });
   }
 
@@ -87,21 +114,28 @@ export function formatAssistantMessage(text: string): string {
     }
   }
 
-  const proseParts: string[] = [];
   const remainder = stripped.replace(JSON_FENCE_RE, '').trim();
-  if (remainder) proseParts.push(remainder);
+  const formattedBlocks: string[] = [];
 
   for (const block of blocks) {
     try {
       const payload = JSON.parse(block);
       const formatted = formatStructuredPayload(payload);
-      if (formatted) proseParts.push(formatted);
+      if (formatted) formattedBlocks.push(formatted);
     } catch {
       /* skip invalid json blocks */
     }
   }
 
-  return proseParts.join('\n\n').trim() || text;
+  if (formattedBlocks.length) {
+    const combined = formattedBlocks.join('\n\n');
+    if (remainder && !looksLikeResourceList(remainder)) {
+      return `${remainder}\n\n${combined}`.trim();
+    }
+    return combined;
+  }
+
+  return remainder || text;
 }
 
 export function looksLikeRawJsonStream(text: string): boolean {

@@ -10,7 +10,10 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from sqlalchemy import inspect, text
+
 from agency.core.tools.database import Base, Database
+from agency.core.tools.models import ContentItem, ModuleProgress  # noqa: F401
 from fastapi_app.admin.models import AdminNucId, College, Course, Department  # noqa: F401
 from fastapi_app.auth.models import User  # noqa: F401
 from fastapi_app.auth.utils import hash_password
@@ -67,9 +70,36 @@ def _clean_duplicate_courses(db: Database) -> None:
     flag.touch()
 
 
+def _migrate_content_items(db: Database) -> None:
+    """Add course_id, module_order, status, uploaded_by to existing content_items."""
+    inspector = inspect(db.engine)
+    if "content_items" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("content_items")}
+    dialect = db.engine.dialect.name
+    alters: list[str] = []
+    if "course_id" not in columns:
+        alters.append("ADD COLUMN course_id VARCHAR(36)")
+    if "module_order" not in columns:
+        alters.append("ADD COLUMN module_order INTEGER")
+    if "status" not in columns:
+        alters.append("ADD COLUMN status VARCHAR(32) DEFAULT 'approved'")
+    if "uploaded_by" not in columns:
+        alters.append("ADD COLUMN uploaded_by VARCHAR(36)")
+    if not alters:
+        return
+    with db.engine.begin() as conn:
+        for clause in alters:
+            if dialect == "postgresql":
+                conn.execute(text(f"ALTER TABLE content_items {clause}"))
+            else:
+                conn.execute(text(f"ALTER TABLE content_items {clause}"))
+
+
 def init_database() -> None:
     db = Database()
     Base.metadata.create_all(bind=db.engine)
+    _migrate_content_items(db)
     _clean_duplicate_courses(db)
     run_migrations()
     _seed_admin(db)

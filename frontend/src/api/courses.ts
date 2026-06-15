@@ -36,6 +36,28 @@ export async function fetchCourses(departmentId?: string, level?: string): Promi
   }));
 }
 
+function mapCourseFromApi(c: Record<string, unknown>): UniversityCourse {
+  return {
+    id: String(c.id),
+    department_id: String(c.department_id),
+    course_code: String(c.course_code),
+    course_title: String(c.course_title),
+    level: String(c.level),
+    units: Number(c.credit_units ?? c.units ?? 0),
+    semester: normalizeSemester(c.semester ? String(c.semester) : undefined),
+    type: (c.course_type as UniversityCourse['type']) ?? 'Compulsory',
+    description: c.description ? String(c.description) : undefined,
+  };
+}
+
+export async function fetchCoursesByIds(ids: string[]): Promise<UniversityCourse[]> {
+  if (!ids.length) return [];
+  const { data } = await apiClient.get<Array<Record<string, unknown>>>('/admin/courses/by-ids', {
+    params: { ids: ids.join(',') },
+  });
+  return (data ?? []).map(mapCourseFromApi);
+}
+
 export async function createDepartment(data: { name: string; college_id: string }) {
   const { createDepartment: create } = await import('./admin');
   return create({ name: data.name, college_id: data.college_id });

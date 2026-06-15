@@ -7,8 +7,9 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 from agency.tutor_service import (
     backfill_content_source_origin,
@@ -25,10 +26,13 @@ from agency.tutor_service import (
 from fastapi_app.schemas.learner import (
     BackfillSourceOriginResponse,
     ContentItemsResponse,
+    CurriculumResponse,
+    CurriculumUpdateRequest,
     IngestSourcesRequest,
     IngestSourcesResponse,
     IngestionHistoryResponse,
     LearnerProfileResponse,
+    ModuleProgressUpdate,
     TutorChatRequest,
     TutorChatResponse,
     TutorRecommendRequest,
@@ -43,8 +47,13 @@ from fastapi_app.security import (
     require_dev_token,
     resolve_learner_id,
 )
+from fastapi_app.database import get_db
 from fastapi_app.services import knowledge_service, onboarding_service, sessions_service
+from fastapi_app.services.content_ingestion_service import run_ingestion_for_topics
+from fastapi_app.services.curriculum_service import get_curriculum_for_course
+from fastapi_app.services.course_service import get_learner_enrolled_courses
 from fastapi_app.services.engagement_service import record_engagement
+from fastapi_app.services.module_progress_service import upsert_module_progress
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +171,7 @@ async def _tutor_chat_stream_response(payload: TutorChatRequest, auth: AuthConte
 def tutor_recommend(
     payload: TutorRecommendRequest,
     auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
 ) -> TutorRecommendResponse:
     """
     Direct recommendations without full Coordinator orchestration.
@@ -171,13 +181,27 @@ def tutor_recommend(
     try:
         events = [e.model_dump() for e in payload.events] if payload.events else None
         learner_id = resolve_learner_id(auth, payload.learner_id)
+        enrolled = get_learner_enrolled_courses(learner_id, db)
+
+        message = payload.message or "what should I study next"
+        course_context = dict(payload.course_context or {})
+        if enrolled:
+            course_context["enrolled_courses"] = enrolled
+            course_titles = ", ".join(f"{c['code']} {c['title']}" for c in enrolled)
+            message = (
+                f"{message}\n\n"
+                f"[CONTEXT: Student is enrolled in: {course_titles}. "
+                f"Prioritize resources relevant to these specific courses.]"
+            )
+
         result = handle_recommend_request(
             learner_id=learner_id,
-            message=payload.message,
-            course_context=payload.course_context,
+            message=message,
+            course_context=course_context,
             events=events,
             limit=payload.limit,
             use_agent=payload.use_agent,
+            enrolled_courses=enrolled,
         )
         return TutorRecommendResponse(
             request_id=result["request_id"],
@@ -187,10 +211,98 @@ def tutor_recommend(
             adaptive_path=result.get("adaptive_path", []),
             memory_used=result.get("memory_used"),
             timestamp=result["timestamp"],
+            status=result.get("status"),
+            message=result.get("message"),
         )
     except Exception as exc:
         logger.exception("tutor_recommend_failed", extra={"learner_id": payload.learner_id})
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/curriculum/{learner_id}", response_model=CurriculumResponse)
+def get_curriculum(
+    learner_id: str,
+    course_id: str = Query(..., description="Enrolled course UUID"),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> CurriculumResponse:
+    """Per-course curriculum built from content matching that course's title only."""
+    resolved_id = resolve_learner_id(auth, learner_id)
+    try:
+        result = get_curriculum_for_course(resolved_id, course_id, db)
+        if result.get("status") == "not_found":
+            raise HTTPException(status_code=404, detail="Course not found")
+        if result.get("status") == "not_enrolled":
+            raise HTTPException(status_code=403, detail=result.get("message", "Not enrolled"))
+        return CurriculumResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("get_curriculum_failed", extra={"learner_id": resolved_id, "course_id": course_id})
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/curriculum/request-update")
+def request_curriculum_update(
+    payload: CurriculumUpdateRequest,
+    background_tasks: BackgroundTasks,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Trigger ingestion for a single course's topic, then refetch curriculum."""
+    from fastapi_app.admin.models import Course
+    from fastapi_app.services.course_service import get_course_ids_for_learner
+
+    learner_id = resolve_learner_id(auth, payload.learner_id)
+    enrolled_ids = get_course_ids_for_learner(learner_id)
+    if payload.course_id not in enrolled_ids:
+        raise HTTPException(status_code=403, detail="You are not enrolled in this course")
+
+    course = db.get(Course, payload.course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    background_tasks.add_task(
+        run_ingestion_for_topics,
+        [course.course_title],
+        3,
+    )
+    return {
+        "message": f"Update requested for {course.course_code}",
+        "status": "processing",
+        "course_id": course.id,
+        "course_code": course.course_code,
+    }
+
+
+@router.post("/module-progress")
+def update_module_progress(
+    payload: ModuleProgressUpdate,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Update per-module progress for a learner."""
+    from agency.core.tools.models import ContentItem
+
+    learner_id = resolve_learner_id(auth, payload.learner_id or "")
+    if not learner_id:
+        raise HTTPException(status_code=400, detail="learner_id is required")
+
+    item = db.get(ContentItem, payload.content_item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Content item not found")
+
+    if payload.status not in {"not_started", "in_progress", "completed"}:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    upsert_module_progress(
+        db,
+        learner_id=learner_id,
+        content_item_id=payload.content_item_id,
+        percent_complete=payload.percent_complete,
+        status=payload.status,
+    )
+    return {"message": "Progress updated", "content_item_id": payload.content_item_id}
 
 
 @router.get("/health")

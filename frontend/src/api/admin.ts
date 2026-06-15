@@ -127,7 +127,7 @@ export async function deleteNucId(id: string): Promise<void> {
 export async function listPendingLecturers() {
   const { data } = await apiClient.get('/admin/lecturers/pending');
   return data as Array<{
-    id: string;
+    user_id: string;
     name: string;
     email: string;
     nuc_staff_id: string;
@@ -238,4 +238,37 @@ export const saveTestimonial = (t: Testimonial) => localPlatform.saveTestimonial
 export async function getSystemHealth() {
   const { data } = await client.get('/readyz');
   return data as { status: string; checks?: Record<string, boolean> };
+}
+
+export interface IngestionError {
+  source: string;
+  error: string;
+  traceback?: string;
+}
+
+export interface IngestionStatus {
+  last_run?: string;
+  started_at?: string;
+  status?: string;
+  topics?: string[];
+  items_added?: number;
+  errors?: IngestionError[] | string[];
+}
+
+export async function ingestContentForCourses(params: {
+  college_id?: string;
+  department_id?: string;
+  max_per_topic?: number;
+}) {
+  const { data } = await apiClient.post<{ message: string; topics: string[]; status: string }>(
+    '/admin/content/ingest-for-courses',
+    undefined,
+    { params },
+  );
+  return data;
+}
+
+export async function getIngestionStatus(): Promise<IngestionStatus> {
+  const { data } = await apiClient.get<IngestionStatus>('/admin/content/ingestion-status');
+  return data ?? {};
 }

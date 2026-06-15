@@ -21,6 +21,7 @@ class QuizSubmitRequest(BaseModel):
     learner_id: str
     quiz_id: str
     responses: List[QuizResponseItem]
+    content_item_id: Optional[str] = None
 
 
 class EngagementRequest(BaseModel):

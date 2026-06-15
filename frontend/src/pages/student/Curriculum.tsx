@@ -1,18 +1,32 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Lock, Play } from 'lucide-react';
+import { CheckCircle2, Lock, Play, Sparkles } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { ProgressBar } from '@/components/ui/ProgressBar';
-import { Tabs } from '@/components/ui/Tabs';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { getRecommendations } from '@/api/recommendations';
-import { useKnowledge } from '@/hooks/useStudent';
+import { Tabs } from '@/components/ui/Tabs';
+import { fetchCoursesByIds } from '@/api/courses';
+import {
+  fetchCurriculum,
+  requestCurriculumUpdate,
+  resolveModuleUrl,
+  updateModuleProgress,
+  type CurriculumModule,
+} from '@/api/curriculum';
+import { openMaterialPreview, uploadIdFromContentItemId } from '@/api/upload';
+import { getMe } from '@/api/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
+import type { UniversityCourse } from '@/types';
+
+function uiStatus(step: CurriculumModule): 'COMPLETED' | 'IN PROGRESS' | 'LOCKED' {
+  if (step.status === 'completed') return 'COMPLETED';
+  if (step.status === 'locked') return 'LOCKED';
+  return 'IN PROGRESS';
+}
 
 export default function Curriculum() {
   const { learnerId } = useAuth();
@@ -20,41 +34,108 @@ export default function Curriculum() {
   const toast = useToastStore((s) => s.add);
   const qc = useQueryClient();
   const [tab, setTab] = useState('all');
-  const knowledge = useKnowledge(learnerId);
-  const recs = useQuery({
-    queryKey: ['curriculum', learnerId],
-    queryFn: () => getRecommendations({ learner_id: learnerId, limit: 6 }),
-    enabled: !!learnerId,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
+  const [activeCourse, setActiveCourse] = useState<UniversityCourse | null>(null);
+  const [markCompleteId, setMarkCompleteId] = useState<string | null>(null);
+  const [progressLoading, setProgressLoading] = useState<string | null>(null);
+
+  const meQ = useQuery({ queryKey: ['auth-me'], queryFn: getMe, enabled: !!learnerId });
+  const enrolledIds = (meQ.data?.courses as string[] | undefined) ?? [];
+
+  const enrolledDetailsQ = useQuery({
+    queryKey: ['enrolled-details', enrolledIds],
+    queryFn: () => fetchCoursesByIds(enrolledIds),
+    enabled: enrolledIds.length > 0,
+  });
+
+  useEffect(() => {
+    if (enrolledDetailsQ.data?.length && !activeCourse) {
+      setActiveCourse(enrolledDetailsQ.data[0]);
+    }
+  }, [enrolledDetailsQ.data, activeCourse]);
+
+  useEffect(() => {
+    if (activeCourse?.id) {
+      qc.invalidateQueries({ queryKey: ['curriculum', activeCourse.id] });
+    }
+  }, [activeCourse?.id, qc]);
+
+  const curriculumQ = useQuery({
+    queryKey: ['curriculum', activeCourse?.id],
+    queryFn: () => fetchCurriculum(learnerId!, activeCourse!.id),
+    enabled: !!learnerId && !!activeCourse?.id,
+    staleTime: 30_000,
   });
 
   const refresh = useMutation({
-    mutationFn: () => getRecommendations({ learner_id: learnerId, message: 'refresh curriculum path', limit: 6 }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['curriculum', learnerId] });
-      qc.invalidateQueries({ queryKey: ['knowledge', learnerId] });
-      toast('Curriculum updated based on your latest mastery data.', 'success');
+    mutationFn: () => requestCurriculumUpdate(learnerId!, activeCourse!.id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['curriculum', activeCourse?.id] });
+      toast('Update requested. Refreshing curriculum...', 'info');
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ['curriculum', activeCourse?.id] });
+      }, 5000);
     },
-    onError: () => toast('Failed to update curriculum', 'error'),
+    onError: () => toast('Could not generate update right now.', 'error'),
   });
 
-  const path = recs.data?.adaptive_path ?? [];
-  const masteryMap = Object.fromEntries(
-    (knowledge.data?.subjects ?? []).map((s) => [s.topic, s.mastery]),
-  );
-  const subject = knowledge.data?.subjects[0]?.topic ?? 'Your Curriculum';
+  const markComplete = async (contentItemId: string) => {
+    if (!learnerId) return;
+    setProgressLoading(contentItemId);
+    try {
+      await updateModuleProgress(learnerId, contentItemId, 100, 'completed');
+      setMarkCompleteId(null);
+      await qc.invalidateQueries({ queryKey: ['curriculum', activeCourse?.id] });
+      toast('Module marked complete', 'success');
+    } catch {
+      toast('Could not update progress', 'error');
+    } finally {
+      setProgressLoading(null);
+    }
+  };
+
+  const handleContinue = async (module: CurriculumModule) => {
+    const contentItemId = module.content_item_id || module.item_id;
+    const sourceType = (module.source_type || '').toLowerCase();
+    const sourceUrl = module.source_url;
+
+    if (sourceType === 'pdf' || sourceType === 'document' || sourceType === 'slides') {
+      const uploadId = uploadIdFromContentItemId(contentItemId);
+      if (uploadId) {
+        try {
+          await openMaterialPreview(uploadId);
+          if (contentItemId) setMarkCompleteId(contentItemId);
+        } catch {
+          toast('Could not open file', 'error');
+        }
+        return;
+      }
+    }
+
+    if (sourceUrl && (sourceUrl.startsWith('http') || sourceUrl.startsWith('/'))) {
+      window.open(resolveModuleUrl(sourceUrl), '_blank', 'noopener,noreferrer');
+      if (contentItemId) await markComplete(contentItemId);
+      return;
+    }
+
+    navigate(`/student/ai-assistant?topic=${encodeURIComponent(module.title || '')}`);
+  };
+
+  const path = curriculumQ.data?.modules ?? [];
+  const noCourseContent = curriculumQ.data?.status === 'not_generated';
+  const subject = activeCourse?.course_title ?? 'Your Curriculum';
 
   const filteredPath = path.filter((step) => {
     if (tab === 'all') return true;
-    const type = String(step.type ?? step.module_type ?? '').toLowerCase();
+    const type = String(step.module_type ?? '').toLowerCase();
     if (tab === 'core') return type === 'core' || type === 'compulsory';
     if (tab === 'electives') return type === 'elective';
     if (tab === 'assessments') return type === 'assessment' || type === 'quiz';
     return false;
   });
 
-  if (knowledge.isLoading || recs.isLoading) {
+  const isLoading = curriculumQ.isLoading || meQ.isLoading || enrolledDetailsQ.isLoading;
+
+  if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-64" />
@@ -67,16 +148,50 @@ export default function Curriculum() {
 
   return (
     <div className="space-y-6">
+      {enrolledDetailsQ.data && enrolledDetailsQ.data.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {enrolledDetailsQ.data.map((course) => (
+            <button
+              key={course.id}
+              type="button"
+              onClick={() => setActiveCourse(course)}
+              className={cn(
+                'rounded-full border px-4 py-2 text-sm font-semibold transition-all',
+                activeCourse?.id === course.id
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-400',
+              )}
+            >
+              {course.course_code}
+              <span className="ml-2 text-xs opacity-70">{course.course_title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Badge variant="muted">CURRICULUM</Badge>
           <h1 className="mt-2 text-[28px] font-extrabold">{subject}</h1>
-          <p className="text-text-secondary">Adaptive path generated from your mastery model.</p>
+          <p className="text-text-secondary">Course modules with per-module progress tracking.</p>
         </div>
-        <Button variant="secondary" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+        <Button variant="secondary" disabled={refresh.isPending || !activeCourse} onClick={() => refresh.mutate()}>
           {refresh.isPending ? 'Updating...' : 'Request AI Update'}
         </Button>
       </div>
+
+      {curriculumQ.data?.source === 'lecturer_materials' && (
+        <div className="inline-flex items-center gap-2 rounded-lg bg-green-50 px-3 py-1.5 text-xs text-green-600">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Materials provided by your lecturer
+        </div>
+      )}
+      {curriculumQ.data?.source === 'external_supplemental' && (
+        <div className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs text-blue-600">
+          <Sparkles className="h-3.5 w-3.5" />
+          AI-curated resources (your lecturer hasn&apos;t uploaded materials yet)
+        </div>
+      )}
 
       <Tabs
         active={tab}
@@ -90,18 +205,32 @@ export default function Curriculum() {
       />
 
       <div className="space-y-4">
-        {filteredPath.length === 0 ? (
+        {curriculumQ.isFetching && !curriculumQ.isLoading ? (
+          <p className="text-sm text-text-muted">Loading curriculum for {activeCourse?.course_code}…</p>
+        ) : null}
+
+        {noCourseContent ? (
+          <div className="py-16 text-center">
+            <Lock className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+            <h3 className="font-semibold text-gray-700">
+              Curriculum not yet generated for {activeCourse?.course_code ?? 'your course'}
+            </h3>
+            <p className="mt-1 text-sm text-gray-400">
+              Content for this course is being prepared. Try the &quot;Request AI Update&quot; button or check back later.
+            </p>
+          </div>
+        ) : filteredPath.length === 0 ? (
           <Card className="p-8 text-center text-text-secondary">
             Take a quiz or complete onboarding to generate your adaptive path.
           </Card>
         ) : (
           filteredPath.map((step, i) => {
-            const title = String(step.title ?? step.topic ?? `Step ${i + 1}`);
-            const pct = masteryMap[title] ?? masteryMap[String(step.topic)] ?? 0;
-            const prevPct = i > 0 ? (masteryMap[String(filteredPath[i - 1]?.title ?? '')] ?? 0) : 100;
-            const status = pct >= 85 ? 'COMPLETED' : prevPct < 40 && i > 0 ? 'LOCKED' : pct >= 40 ? 'IN PROGRESS' : i === 0 ? 'IN PROGRESS' : 'LOCKED';
+            const title = String(step.title ?? `Step ${i + 1}`);
+            const contentItemId = step.content_item_id || step.item_id;
+            const pct = step.percent_complete ?? 0;
+            const status = uiStatus(step);
             return (
-              <div key={String(step.item_id ?? i)} className="flex gap-4">
+              <div key={String(contentItemId ?? i)} className="flex gap-4">
                 <div className="flex flex-col items-center">
                   {status === 'COMPLETED' && <CheckCircle2 className="h-6 w-6 text-teal" />}
                   {status === 'IN PROGRESS' && <Play className="h-6 w-6 text-primary" />}
@@ -112,16 +241,18 @@ export default function Curriculum() {
                   {status === 'LOCKED' && <Lock className="absolute right-4 top-4 h-4 w-4 text-text-muted" />}
                   <div className="flex items-start justify-between">
                     <Badge variant={status === 'COMPLETED' ? 'teal' : status === 'IN PROGRESS' ? 'primary' : 'muted'}>
-                      {status}
+                      {status.replace(' ', ' ')}
                     </Badge>
-                    <span className="label-caps text-text-muted">MODULE {i + 1}</span>
+                    <span className="label-caps text-text-muted">MODULE {step.module_number ?? i + 1}</span>
                   </div>
                   <h3 className="mt-2 text-[18px] font-bold">{title}</h3>
-                  <p className="mt-1 text-[14px] text-text-secondary">{String(step.objective ?? 'Study and practice')}</p>
+                  <p className="mt-1 text-[14px] text-text-secondary">
+                    {String(step.description || step.objective || 'Study and practice')}
+                  </p>
 
                   {status === 'COMPLETED' && (
                     <p className="mt-3 flex items-center gap-2 text-[14px] text-teal">
-                      <CheckCircle2 className="h-4 w-4" /> Mastery: {pct}%
+                      <CheckCircle2 className="h-4 w-4" /> Progress: {pct}%
                     </p>
                   )}
 
@@ -131,15 +262,22 @@ export default function Curriculum() {
                         <span>Progress</span>
                         <span>{pct}%</span>
                       </div>
-                      <ProgressBar value={pct} autoColor={false} />
-                      <Button
-                        className="mt-4"
-                        onClick={() =>
-                          navigate(`/student/ai-assistant?topic=${encodeURIComponent(title)}`)
-                        }
-                      >
+                      <div className="h-[5px] w-full overflow-hidden rounded-full bg-border">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                      </div>
+                      <Button className="mt-4" onClick={() => handleContinue(step)}>
                         Continue →
                       </Button>
+                      {markCompleteId === contentItemId && contentItemId && (
+                        <Button
+                          className="mt-2"
+                          variant="secondary"
+                          disabled={progressLoading === contentItemId}
+                          onClick={() => markComplete(contentItemId)}
+                        >
+                          Mark as Complete
+                        </Button>
+                      )}
                     </div>
                   )}
 
@@ -147,9 +285,11 @@ export default function Curriculum() {
                     <p className="mt-4 text-[13px] text-text-muted">Complete the previous module to unlock.</p>
                   )}
 
-                  {status !== 'LOCKED' && (
+                  {status !== 'LOCKED' && contentItemId && (
                     <div className="mt-4 flex gap-2">
-                      <Link to={`/student/quiz/${encodeURIComponent(title)}`}>
+                      <Link
+                        to={`/student/quiz/${encodeURIComponent(activeCourse?.course_title ?? title)}?content_item_id=${encodeURIComponent(contentItemId)}`}
+                      >
                         <Button variant="secondary">Take Quiz</Button>
                       </Link>
                     </div>
