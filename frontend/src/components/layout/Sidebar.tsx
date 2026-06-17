@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 export interface NavItem {
@@ -17,7 +17,7 @@ interface SidebarProps {
 export function Sidebar({ items, bottomItems, subtitle = 'LEARNING INTELLIGENCE' }: SidebarProps) {
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-[260px] flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center gap-3 border-b border-border px-6 py-5">
+      <Link to="/" className="flex items-center gap-3 border-b border-border px-6 py-5 hover:bg-card-hover">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white">
           <GraduationCap className="h-5 w-5" />
         </div>
@@ -25,7 +25,7 @@ export function Sidebar({ items, bottomItems, subtitle = 'LEARNING INTELLIGENCE'
           <div className="text-[16px] font-bold text-text-primary">AITutor</div>
           <div className="label-caps text-text-muted">{subtitle}</div>
         </div>
-      </div>
+      </Link>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
         {items.map((item) => (

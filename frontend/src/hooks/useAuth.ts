@@ -1,16 +1,17 @@
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, type TokenResponse } from '@/stores/authStore';
 
 export function useAuth() {
   const store = useAuthStore();
   const user_id = store.user_id ?? '';
+  const name = store.name ?? '';
   return {
-    user: store.user_id
+    user: user_id
       ? {
-          user_id: store.user_id,
-          name: store.name ?? '',
+          user_id,
+          name,
           email: store.email ?? '',
           role: store.role ?? 'student',
-          learner_id: store.user_id,
+          learner_id: user_id,
         }
       : null,
     token: store.token,
@@ -26,7 +27,7 @@ export function useAuth() {
         const raw = localStorage.getItem('ai_tutor_user');
         if (raw) {
           try {
-            const user = JSON.parse(raw);
+            const user = JSON.parse(raw) as TokenResponse;
             localStorage.setItem('ai_tutor_user', JSON.stringify({ ...user, name: patch.name }));
           } catch {
             /* ignore */
@@ -36,7 +37,7 @@ export function useAuth() {
     },
     user_id,
     learnerId: user_id,
-    name: store.name,
+    name,
     email: store.email,
     role: store.role,
   };

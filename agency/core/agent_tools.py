@@ -183,8 +183,14 @@ async def generate_recommendations(ctx: RunContextWrapper, args: RecommendArgs) 
         )
         memory_snippets = [m["content"] for m in mem.get("vector_memories", [])]
 
+        catalog = [
+            item
+            for item in runtime.catalog
+            if str(item.get("source_origin", "")).strip().lower() != "lecturer_upload"
+        ]
+
         ranked, adaptive_path = hybrid_recommend(
-            catalog=runtime.catalog,
+            catalog=catalog,
             weak_topics=weak_topics,
             preferences=preference_terms if isinstance(preference_terms, list) else [],
             memory_snippets=memory_snippets,

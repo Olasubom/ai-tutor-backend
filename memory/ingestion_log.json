@@ -1,52 +1,10 @@
 {
-  "last_run": "2026-06-15T09:51:40.830748+00:00",
-  "started_at": "2026-06-15T09:50:47.786226+00:00",
-  "status": "partial",
+  "last_run": "2026-06-16T13:13:44.170882+00:00",
+  "started_at": "2026-06-16T13:13:26.315783+00:00",
+  "status": "completed",
   "topics": [
-    "Alternative Dispute Resolution I",
-    "Alternative Dispute Resolution II",
-    "Citizenship, Peace and Conflict Resolution",
-    "Commercial Law I",
-    "Commercial Law II",
-    "Communication in English",
-    "Constitutional Law I",
-    "Constitutional Law II",
-    "Criminal Law I",
-    "Criminal Law II",
-    "English for Legal Writing",
-    "Entrepreneurship and Innovation",
-    "Family Law I",
-    "Family Law II",
-    "Fiqh I",
-    "Food and Drug Law I",
-    "Food and Drug Law II",
-    "Fountain University Fiqh II",
-    "Fountain University Fiqh V",
-    "Introduction to Arabic I",
-    "Introduction to Arabic II",
-    "Introduction to General Principle of Islamic Law",
-    "Introduction to Logic",
-    "Introduction to Psychology",
-    "Introduction to Social and Political Philosoph",
-    "Introduction to Sociology I",
-    "Introduction to Sociology II",
-    "Law of Contract I",
-    "Law of Contract II",
-    "Law of Torts I",
-    "Law of Torts II",
-    "Legal Methods I",
-    "Legal Methods II",
-    "Logic, Philosophy and Human existence",
-    "Nigerian Legal System I",
-    "Nigerian Legal System II",
-    "Venture Creation"
+    "Entrepreneurship and Innovation"
   ],
-  "items_added": 15,
-  "errors": [
-    {
-      "source": "ebooks",
-      "error": "[WinError 10054] An existing connection was forcibly closed by the remote host",
-      "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_transports\\default.py\", line 101, in map_httpcore_exceptions\n    yield\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_transports\\default.py\", line 250, in handle_request\n    resp = self._pool.handle_request(req)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpcore\\_sync\\connection_pool.py\", line 256, in handle_request\n    raise exc from None\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpcore\\_sync\\connection_pool.py\", line 236, in handle_request\n    response = connection.handle_request(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpcore\\_sync\\connection.py\", line 101, in handle_request\n    raise exc\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpcore\\_sync\\connection.py\", line 78, in handle_request\n    stream = self._connect(request)\n             ^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpcore\\_sync\\connection.py\", line 156, in _connect\n    stream = stream.start_tls(**kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpcore\\_backends\\sync.py\", line 154, in start_tls\n    with map_exceptions(exc_map):\n         ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpcore\\_exceptions.py\", line 14, in map_exceptions\n    raise to_exc(exc) from exc\nhttpcore.ConnectError: [WinError 10054] An existing connection was forcibly closed by the remote host\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\fastapi_app\\services\\content_ingestion_service.py\", line 96, in run_ingestion_for_topics\n    book_result = ingest_ebooks_for_topics(topics, max_per_topic=max_per_topic)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\scripts\\ingest_ebooks.py\", line 154, in ingest_ebooks_for_topics\n    candidates = fetch_ebook_learning_items(\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\agency\\core\\tools\\source_ingestion.py\", line 91, in fetch_ebook_learning_items\n    resp = client.get(\n           ^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_client.py\", line 1053, in get\n    return self.request(\n           ^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_client.py\", line 825, in request\n    return self.send(request, auth=auth, follow_redirects=follow_redirects)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_client.py\", line 914, in send\n    response = self._send_handling_auth(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_client.py\", line 942, in _send_handling_auth\n    response = self._send_handling_redirects(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_client.py\", line 979, in _send_handling_redirects\n    response = self._send_single_request(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_client.py\", line 1014, in _send_single_request\n    response = transport.handle_request(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_transports\\default.py\", line 249, in handle_request\n    with map_httpcore_exceptions():\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\USER\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\contextlib.py\", line 158, in __exit__\n    self.gen.throw(value)\n  File \"C:\\Users\\USER\\Desktop\\OLA\\PROJECT\\ai-tutor-backend\\venv\\Lib\\site-packages\\httpx\\_transports\\default.py\", line 118, in map_httpcore_exceptions\n    raise mapped_exc(message) from exc\nhttpx.ConnectError: [WinError 10054] An existing connection was forcibly closed by the remote host\n"
-    }
-  ]
+  "items_added": 6,
+  "errors": []
 }

@@ -566,3 +566,35 @@ def ingestion_status(_: Annotated[dict, Depends(require_role("admin"))]) -> dict
     from fastapi_app.services.content_ingestion_service import read_ingestion_status
 
     return read_ingestion_status()
+
+
+class AssignLecturerRequest(BaseModel):
+    lecturer_id: Optional[str] = None
+
+
+@router.post("/courses/backfill-lecturers")
+def backfill_course_lecturers(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[dict, Depends(require_role("admin"))],
+) -> dict:
+    """Assign lecturer_id to catalog courses missing one (by department match)."""
+    from fastapi_app.services.lecturer_backfill_service import backfill_lecturer_ids_by_department
+
+    return backfill_lecturer_ids_by_department(db)
+
+
+@router.patch("/courses/{course_id}/assign-lecturer")
+def assign_course_lecturer(
+    course_id: str,
+    payload: AssignLecturerRequest,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[dict, Depends(require_role("admin"))],
+) -> dict:
+    from fastapi_app.services.lecturer_backfill_service import assign_lecturer_to_course
+    from fastapi_app.services.lecturer_course_service import course_dict
+
+    try:
+        course = assign_lecturer_to_course(db, course_id, payload.lecturer_id)
+        return course_dict(course)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

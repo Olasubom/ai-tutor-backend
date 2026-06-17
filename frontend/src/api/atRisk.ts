@@ -3,10 +3,14 @@ import { apiClient } from './client';
 export interface AtRiskStudent {
   learner_id: string;
   name: string;
+  email?: string;
   department: string;
   level: string;
+  mastery?: number;
+  weak_topics?: string[];
   risk_factors: string[];
   severity: 'low' | 'medium' | 'high';
+  modules_done?: number;
   last_active: string;
   suggested_action: string;
 }

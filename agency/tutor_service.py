@@ -589,6 +589,9 @@ def handle_recommend_request(
     weak_topics = highlights.get("weak_topics") or (
         (profile.get("knowledge_state_summary") or {}).get("weak_topics", [])
     )
+    weak_quiz_topics = profile.get("weak_quiz_topics") or []
+    if weak_quiz_topics:
+        weak_topics = list(dict.fromkeys(list(weak_topics) + list(weak_quiz_topics)))
     if enrolled_courses:
         for course in enrolled_courses:
             title = str(course.get("title") or course.get("course_title") or "")
@@ -628,6 +631,23 @@ def handle_recommend_request(
                 "timestamp": utc_now().isoformat(),
             }
         catalog = relevant_catalog
+
+    catalog = [
+        item
+        for item in catalog
+        if str(item.get("source_origin", "")).strip().lower() != "lecturer_upload"
+    ]
+    if not catalog:
+        return {
+            "request_id": request_id,
+            "learner_id": learner_id,
+            "source": "hybrid_recommender",
+            "recommendations": [],
+            "adaptive_path": [],
+            "status": "no_content_for_courses",
+            "message": NO_CONTENT_MESSAGE,
+            "timestamp": utc_now().isoformat(),
+        }
 
     ranked, adaptive_path = hybrid_recommend(
         catalog=catalog,

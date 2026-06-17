@@ -272,6 +272,10 @@ def complete_onboarding(
             "onboarding_complete": True,
         },
     )
+    if payload.selected_course_ids:
+        from fastapi_app.services.enrollment_service import sync_enrollments_for_student
+
+        sync_enrollments_for_student(db, user.id, [str(i) for i in payload.selected_course_ids])
     from fastapi_app.services.onboarding_service import seed_knowledge
 
     seed_knowledge(user.id, [r.model_dump() for r in payload.subject_ratings])

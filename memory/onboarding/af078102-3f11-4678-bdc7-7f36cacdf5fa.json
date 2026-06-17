@@ -1,0 +1,55 @@
+{
+  "completed_steps": [
+    3
+  ],
+  "data": {
+    "step3": {
+      "assessments": [
+        {
+          "topic": "Law of Contract I",
+          "proficiency": "no_knowledge"
+        },
+        {
+          "topic": "Law of Contract II",
+          "proficiency": "no_knowledge"
+        },
+        {
+          "topic": "Entrepreneurship and Innovation",
+          "proficiency": "comfortable"
+        },
+        {
+          "topic": "Fountain University Fiqh II",
+          "proficiency": "familiar"
+        },
+        {
+          "topic": "Citizenship, Peace and Conflict Resolution",
+          "proficiency": "no_knowledge"
+        },
+        {
+          "topic": "Food and Drug Law I",
+          "proficiency": "no_knowledge"
+        },
+        {
+          "topic": "Food and Drug Law II",
+          "proficiency": "familiar"
+        },
+        {
+          "topic": "Constitutional Law I",
+          "proficiency": "familiar"
+        },
+        {
+          "topic": "Constitutional Law II",
+          "proficiency": "familiar"
+        },
+        {
+          "topic": "Nigerian Legal System I",
+          "proficiency": "familiar"
+        },
+        {
+          "topic": "Nigerian Legal System II",
+          "proficiency": "comfortable"
+        }
+      ]
+    }
+  }
+}

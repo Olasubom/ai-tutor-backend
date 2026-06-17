@@ -11,6 +11,7 @@ scikit-learn>=1.4.0
 
 # Vector memory
 faiss-cpu>=1.8.0
+pypdf>=4.0.0
 
 # Database
 SQLAlchemy>=2.0.30

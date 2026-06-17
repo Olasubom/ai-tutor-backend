@@ -274,5 +274,12 @@ def delete_material(upload_id: str) -> bool:
 
 
 def ingest_uploaded_material(record: dict) -> None:
-    """Ensure approved upload is synced to content_items (legacy hook)."""
+    """Ensure approved upload is synced to content_items and process PDF embeddings."""
     sync_content_item(record)
+    if record.get("status") != "approved":
+        return
+    file_type = (record.get("file_type") or "").lower()
+    if file_type in {"pdf", "document"}:
+        from fastapi_app.services.module_embedding_service import process_content_item_embeddings
+
+        process_content_item_embeddings(f"upload_{record['id']}")

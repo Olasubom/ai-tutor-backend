@@ -2,7 +2,15 @@ import { apiClient } from './client';
 
 export interface AppNotification {
   notification_id: string;
-  type: 'mastery_drop' | 'task_due' | 'new_resource' | 'review_due' | 'streak_alert' | 'at_risk';
+  type:
+    | 'mastery_drop'
+    | 'task_due'
+    | 'new_resource'
+    | 'review_due'
+    | 'streak_alert'
+    | 'at_risk'
+    | 'announcement'
+    | 'quiz_published';
   title: string;
   body: string;
   is_read: boolean;

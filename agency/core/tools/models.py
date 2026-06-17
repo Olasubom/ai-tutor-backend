@@ -95,7 +95,32 @@ class ContentItem(Base):
     module_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, default="approved", index=True)
     uploaded_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    embedding_status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, default="pending")
     payload_json: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class ModuleSession(Base):
+    __tablename__ = "module_sessions"
+    __table_args__ = (
+        UniqueConstraint("learner_id", "content_item_id", name="uq_learner_module_session"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    learner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    content_item_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("content_items.item_id"), nullable=False
+    )
+    course_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    stage: Mapped[str] = mapped_column(String(32), default="explanation", nullable=False)
+    explanation_progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    session_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

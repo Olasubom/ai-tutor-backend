@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,17 +25,39 @@ def _course_payload(c: Course) -> Dict[str, Any]:
     }
 
 
-def get_course_ids_for_learner(learner_id: str) -> List[str]:
-    """Resolve enrolled course IDs from structured memory and onboarding files."""
+def get_course_ids_for_learner(learner_id: str, db: Session | None = None) -> List[str]:
+    """Resolve enrolled course IDs from memory, onboarding, and CourseEnrollment rows."""
     mem = get_structured_memory(learner_id)
-    ids = list(mem.get("courses") or [])
-    if ids:
-        return [str(i) for i in ids if i]
+    ids: set[str] = {str(i) for i in (mem.get("courses") or []) if i}
 
     onboarding = read_json(f"onboarding/{learner_id}.json", {}).get("data", {})
     step2 = onboarding.get("step2") or {}
-    ids = step2.get("selected_course_ids") or []
-    return [str(i) for i in ids if i]
+    for i in step2.get("selected_course_ids") or []:
+        if i:
+            ids.add(str(i))
+
+    try:
+        from agency.core.tools.database import Database
+        from fastapi_app.models.lecturer_dashboard import CourseEnrollment
+
+        session = db
+        own_session = False
+        if session is None:
+            session = Database()._SessionLocal()  # noqa: SLF001
+            own_session = True
+        rows = session.scalars(
+            select(CourseEnrollment.course_id).where(
+                CourseEnrollment.student_id == learner_id,
+                CourseEnrollment.status == "active",
+            )
+        ).all()
+        ids.update(str(r) for r in rows)
+        if own_session:
+            session.close()
+    except Exception:
+        pass
+
+    return list(ids)
 
 
 def get_courses_by_ids(db: Session, course_ids: List[str]) -> List[Dict[str, Any]]:

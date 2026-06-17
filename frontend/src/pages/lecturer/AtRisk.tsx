@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -8,6 +9,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
 import { dismissAtRiskAlert, getAtRiskStudents, sendResourceToStudent } from '@/api/atRisk';
@@ -116,8 +118,24 @@ export default function AtRisk() {
                 <div>
                   <div className="font-bold">{s.name}</div>
                   <div className="text-[13px] text-text-muted">
-                    {s.department} · Level {s.level}
+                    {s.email || s.department} · Level {s.level}
                   </div>
+                  {s.mastery != null && (
+                    <div className="mt-2 w-48">
+                      <div className="mb-1 flex justify-between text-[12px]">
+                        <span>Mastery</span>
+                        <span className={s.mastery < 30 ? 'text-error' : s.mastery < 40 ? 'text-warning' : ''}>
+                          {s.mastery}%
+                        </span>
+                      </div>
+                      <ProgressBar value={s.mastery} />
+                    </div>
+                  )}
+                  {(s.weak_topics?.length ?? 0) > 0 && (
+                    <p className="mt-2 text-[12px] text-text-secondary">
+                      Weak: {s.weak_topics!.slice(0, 3).join(', ')}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -135,6 +153,9 @@ export default function AtRisk() {
                 <Button variant="secondary" onClick={() => setDetailId(s.learner_id)}>
                   View Profile
                 </Button>
+                <Link to="/lecturer/students">
+                  <Button variant="ghost">View Student</Button>
+                </Link>
                 <Button onClick={() => setSendId(s.learner_id)}>Send Resource</Button>
               </div>
             </Card>

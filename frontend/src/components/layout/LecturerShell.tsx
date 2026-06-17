@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, LayoutDashboard, LogOut, Settings, Upload, User, Users } from 'lucide-react';
+import { AlertTriangle, BookOpen, Bot, ClipboardList, GraduationCap, LayoutDashboard, LogOut, Settings, Upload, User, Users } from 'lucide-react';
 import { Sidebar, type NavItem } from './Sidebar';
 import { Header } from './Header';
 import { useAuth } from '@/hooks/useAuth';
@@ -34,6 +34,9 @@ export function LecturerShell() {
 
   const nav: NavItem[] = [
     { to: '/lecturer/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
+    { to: '/lecturer/courses', label: 'Courses', icon: <BookOpen className="h-4 w-4" /> },
+    { to: '/lecturer/grades', label: 'Grades', icon: <GraduationCap className="h-4 w-4" /> },
+    { to: '/lecturer/quizzes', label: 'Quizzes', icon: <ClipboardList className="h-4 w-4" /> },
     { to: '/lecturer/upload', label: 'Upload Material', icon: <Upload className="h-4 w-4" /> },
     { to: '/lecturer/students', label: 'Students', icon: <Users className="h-4 w-4" /> },
     {
@@ -41,6 +44,7 @@ export function LecturerShell() {
       label: alertCount > 0 ? `AI Alerts (${alertCount})` : 'AI Alerts',
       icon: <AlertTriangle className="h-4 w-4 text-error" />,
     },
+    { to: '/lecturer/ai-assistant', label: 'AI Assistant', icon: <Bot className="h-4 w-4" /> },
     { to: '/lecturer/settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
   ];
 

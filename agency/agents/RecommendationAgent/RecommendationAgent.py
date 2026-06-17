@@ -31,6 +31,7 @@ _INSTRUCTIONS = """You are the RecommendationAgent.
   `video`, `text`, `interactive`, `game`, `read_aloud`.
 - If preference is weak or unknown, use a balanced modality mix.
 - Lower difficulty when mastery is low; stretch when mastery is high.
+- Prioritize topics in `weak_quiz_topics` (modules where the student scored below 60% on a quiz).
 - Respect Bloom progression:
   - weak topics -> remember/understand/apply first
   - stronger topics -> apply/analyze/evaluate/create as appropriate

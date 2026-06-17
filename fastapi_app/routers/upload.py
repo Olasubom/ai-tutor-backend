@@ -131,6 +131,18 @@ def list_materials(
     return {"materials": materials, "total": len(materials)}
 
 
+@router.get("/material/{upload_id}/embedding-status")
+def material_embedding_status(
+    upload_id: str,
+    db: Session = Depends(get_db),
+    current: Annotated[dict, Depends(get_current_user)] = None,
+):
+    _get_user(db, current)
+    from fastapi_app.services.module_embedding_service import get_embedding_status
+
+    return get_embedding_status(upload_id, db)
+
+
 @router.patch("/material/{upload_id}/approve")
 def approve_material(
     upload_id: str,

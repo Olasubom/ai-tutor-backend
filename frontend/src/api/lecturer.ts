@@ -1,6 +1,9 @@
 import { apiClient } from './client';
-import { localPlatform } from './localPlatform';
-import { getKnowledgeState } from './knowledge';
+import {
+  getCourseAnalyticsOverview,
+  getCourseStudentAnalytics,
+  listLecturerManagedCourses,
+} from './lecturerDashboard';
 
 export async function ensureLecturerProfile(
   lecturerId: string,
@@ -15,32 +18,22 @@ export async function getLecturerStudents(lecturerId: string) {
   return data;
 }
 
-export async function getLecturerClassOverview(departmentId?: string) {
-  const students = localPlatform.getStudents();
-  const filtered = departmentId
-    ? students.filter((s) => {
-        const onboarding = localPlatform.getOnboarding(s.user_id);
-        return onboarding?.departmentId === departmentId;
-      })
-    : students;
+export async function getLecturerClassOverview(_departmentName?: string) {
+  const courses = await listLecturerManagedCourses();
+  if (!courses.length) return [];
 
-  const rows = await Promise.all(
-    filtered.slice(0, 20).map(async (s) => {
-      const learnerId = s.learner_id ?? `learner_${s.user_id}`;
-      try {
-        const knowledge = await getKnowledgeState(learnerId);
-        const avg =
-          knowledge.subjects.length > 0
-            ? Math.round(
-                knowledge.subjects.reduce((a, b) => a + b.mastery, 0) / knowledge.subjects.length,
-              )
-            : 0;
-        return { student: s, mastery: avg, subjects: knowledge.subjects };
-      } catch {
-        return { student: s, mastery: 0, subjects: [] };
-      }
-    }),
-  );
+  const overview = await getCourseAnalyticsOverview(courses[0].id);
+  const students = await getCourseStudentAnalytics(courses[0].id);
 
-  return rows;
+  return students.map((s) => ({
+    student: {
+      user_id: s.student_id,
+      name: s.name,
+      email: s.email,
+      learner_id: s.student_id,
+    },
+    mastery: Math.round(s.overall_mastery),
+    subjects: Object.entries(s.topic_mastery ?? {}).map(([topic, mastery]) => ({ topic, mastery })),
+    overview,
+  }));
 }

@@ -229,6 +229,11 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  tasks?: Recommendation[];
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
 export interface ApiConfig {

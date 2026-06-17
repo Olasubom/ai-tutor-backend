@@ -9,6 +9,7 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from agency.tutor_service import (
@@ -25,7 +26,9 @@ from agency.tutor_service import (
 )
 from fastapi_app.schemas.learner import (
     BackfillSourceOriginResponse,
+    CompleteModuleSessionRequest,
     ContentItemsResponse,
+    ContinueModuleSessionRequest,
     CurriculumResponse,
     CurriculumUpdateRequest,
     IngestSourcesRequest,
@@ -33,6 +36,7 @@ from fastapi_app.schemas.learner import (
     IngestionHistoryResponse,
     LearnerProfileResponse,
     ModuleProgressUpdate,
+    StartModuleSessionRequest,
     TutorChatRequest,
     TutorChatResponse,
     TutorRecommendRequest,
@@ -54,6 +58,12 @@ from fastapi_app.services.curriculum_service import get_curriculum_for_course
 from fastapi_app.services.course_service import get_learner_enrolled_courses
 from fastapi_app.services.engagement_service import record_engagement
 from fastapi_app.services.module_progress_service import upsert_module_progress
+from fastapi_app.services.module_session_service import (
+    complete_session,
+    continue_session,
+    start_or_resume_session,
+)
+from agency.core.tools.models import ContentItem, ModuleSession
 
 logger = logging.getLogger(__name__)
 
@@ -282,8 +292,6 @@ def update_module_progress(
     db: Session = Depends(get_db),
 ) -> dict:
     """Update per-module progress for a learner."""
-    from agency.core.tools.models import ContentItem
-
     learner_id = resolve_learner_id(auth, payload.learner_id or "")
     if not learner_id:
         raise HTTPException(status_code=400, detail="learner_id is required")
@@ -303,6 +311,77 @@ def update_module_progress(
         status=payload.status,
     )
     return {"message": "Progress updated", "content_item_id": payload.content_item_id}
+
+
+@router.post("/module-session/start")
+def start_module_session(
+    payload: StartModuleSessionRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Create or resume a guided module session (explanation → tasks → quiz)."""
+    learner_id = resolve_learner_id(auth, "")
+    try:
+        return start_or_resume_session(
+            learner_id=learner_id,
+            content_item_id=payload.content_item_id,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("module_session_start_failed", extra={"learner_id": learner_id})
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/module-session/continue")
+def continue_module_session(
+    payload: ContinueModuleSessionRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Advance an active module session based on student input."""
+    learner_id = resolve_learner_id(auth, "")
+    session = db.scalars(
+        select(ModuleSession).where(
+            ModuleSession.id == payload.session_id,
+            ModuleSession.learner_id == learner_id,
+        )
+    ).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    content_item = db.get(ContentItem, session.content_item_id)
+    if content_item is None:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    try:
+        return continue_session(
+            session=session,
+            content_item=content_item,
+            message=payload.message,
+            db=db,
+        )
+    except Exception as exc:
+        logger.exception("module_session_continue_failed", extra={"session_id": payload.session_id})
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/module-session/complete")
+def complete_module_session(
+    payload: CompleteModuleSessionRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Mark module session complete after quiz submission."""
+    learner_id = resolve_learner_id(auth, "")
+    try:
+        return complete_session(learner_id=learner_id, session_id=payload.session_id, db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("module_session_complete_failed", extra={"session_id": payload.session_id})
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/health")

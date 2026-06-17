@@ -131,3 +131,16 @@ class ModuleProgressUpdate(BaseModel):
     content_item_id: str
     percent_complete: int = Field(ge=0, le=100)
     status: str
+
+
+class StartModuleSessionRequest(BaseModel):
+    content_item_id: str
+
+
+class ContinueModuleSessionRequest(BaseModel):
+    session_id: str
+    message: Optional[str] = None
+
+
+class CompleteModuleSessionRequest(BaseModel):
+    session_id: str

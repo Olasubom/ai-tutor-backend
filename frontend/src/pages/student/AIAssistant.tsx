@@ -9,11 +9,77 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
 import { streamChatMessage, sendChatMessage } from '@/api/chat';
+import { continueModuleSession } from '@/api/moduleSession';
 import { getSessions, getSessionMessages } from '@/api/sessions';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, Recommendation } from '@/types';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import { formatAssistantMessage, looksLikeRawJsonStream } from '@/utils/formatAssistantMessage';
+import type { ModuleSessionStage } from '@/api/moduleSession';
+
+const STAGE_LABELS: { id: ModuleSessionStage; label: string }[] = [
+  { id: 'explanation', label: 'Explanation' },
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'quiz', label: 'Quiz' },
+  { id: 'completed', label: 'Complete' },
+];
+
+function StageProgressPills({ stage }: { stage: ModuleSessionStage }) {
+  const order = STAGE_LABELS.map((s) => s.id);
+  const currentIdx = order.indexOf(stage);
+  return (
+    <div className="flex items-center gap-1 text-[11px]">
+      {STAGE_LABELS.map((s, i) => (
+        <span
+          key={s.id}
+          className={cn(
+            'rounded-full px-2 py-0.5',
+            i <= currentIdx ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-400',
+          )}
+        >
+          {s.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function TaskCards({ tasks }: { tasks: Recommendation[] }) {
+  return (
+    <div className="mt-3 space-y-2">
+      {tasks.map((task) => (
+        <div key={task.item_id} className="rounded-lg border border-border bg-page p-3 text-left">
+          <div className="font-semibold">{task.title}</div>
+          {task.description && <p className="mt-1 text-[13px] text-text-secondary">{task.description}</p>}
+          {task.source_url && (
+            <a
+              href={task.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block text-[13px] text-primary underline"
+            >
+              {task.modality === 'video' ? 'Watch Video' : 'Read'}
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface LocationModuleSession {
+  sessionId: string;
+  stage: ModuleSessionStage;
+  courseCode: string;
+  moduleTitle: string;
+  pdfUrl?: string | null;
+  contentItemId: string;
+  courseId?: string;
+  initialMessage?: string;
+  tasks?: Recommendation[];
+  redirectToQuiz?: boolean;
+  quizTopic?: string;
+}
 
 const SUGGESTION_GROUPS = [
   {
@@ -93,6 +159,10 @@ export default function AIAssistant() {
   const [suggestionsOpen, setSuggestionsOpen] = useState(true);
   const [activeGroup, setActiveGroup] = useState(SUGGESTION_GROUPS[0].id);
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
+  const [moduleSession, setModuleSession] = useState<LocationModuleSession | null>(null);
+  const [moduleStage, setModuleStage] = useState<ModuleSessionStage>('explanation');
+  const [moduleSending, setModuleSending] = useState(false);
+  const moduleInitRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const sessions = useQuery({
@@ -115,6 +185,27 @@ export default function AIAssistant() {
   }, [messages, isStreaming]);
 
   useEffect(() => {
+    const state = location.state as { moduleSession?: LocationModuleSession; newSession?: boolean } | null;
+    if (state?.moduleSession && !moduleInitRef.current) {
+      moduleInitRef.current = true;
+      const ms = state.moduleSession;
+      setModuleSession(ms);
+      setModuleStage(ms.stage);
+      setSuggestionsOpen(false);
+      if (ms.initialMessage) {
+        setMessages([
+          {
+            id: `module_init_${Date.now()}`,
+            role: 'assistant',
+            content: ms.initialMessage,
+            timestamp: new Date().toISOString(),
+            tasks: ms.tasks,
+          },
+        ]);
+      }
+      return;
+    }
+
     const wantsNew =
       sessionStorage.getItem('aitutor_new_session') === '1' ||
       (location.state as { newSession?: boolean } | null)?.newSession;
@@ -153,7 +244,69 @@ export default function AIAssistant() {
   const activeSuggestions = SUGGESTION_GROUPS.find((g) => g.id === activeGroup) ?? SUGGESTION_GROUPS[0];
   const showSuggestions = messages.length === 0 && !isStreaming && suggestionsOpen;
 
+  const sendModuleMessage = async (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
+    if (!text || moduleSending || !moduleSession) return;
+    if (!textOverride) setInput('');
+    setSuggestionsOpen(false);
+
+    const userMsg: ChatMessage = {
+      id: `u_${Date.now()}`,
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((m) => [...m, userMsg]);
+    setModuleSending(true);
+
+    try {
+      const res = await continueModuleSession(moduleSession.sessionId, text);
+      setModuleStage(res.stage);
+
+      if (res.redirect_to_quiz && res.topic) {
+        const topic = res.topic;
+        const sessionId = moduleSession.sessionId;
+        setMessages((m) => [
+          ...m,
+          {
+            id: `a_${Date.now()}`,
+            role: 'assistant',
+            content: res.message,
+            timestamp: new Date().toISOString(),
+            action: {
+              label: 'Start Quiz',
+              onClick: () =>
+                navigate(`/student/quiz/${encodeURIComponent(topic)}`, {
+                  state: { moduleSessionId: sessionId, contentItemId: moduleSession.contentItemId },
+                }),
+            },
+          },
+        ]);
+        return;
+      }
+
+      setMessages((m) => [
+        ...m,
+        {
+          id: `a_${Date.now()}`,
+          role: 'assistant',
+          content: res.message,
+          timestamp: new Date().toISOString(),
+          tasks: res.tasks,
+        },
+      ]);
+    } catch {
+      toast('Could not continue module session', 'error');
+    } finally {
+      setModuleSending(false);
+    }
+  };
+
   const send = async (textOverride?: string) => {
+    if (moduleSession) {
+      await sendModuleMessage(textOverride);
+      return;
+    }
     const text = (textOverride ?? input).trim();
     if (!text || isStreaming) return;
     if (!textOverride) setInput('');
@@ -261,6 +414,16 @@ export default function AIAssistant() {
       </aside>
 
       <div className="flex flex-1 flex-col">
+        {moduleSession && (
+          <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-4 py-2">
+            <div className="text-sm">
+              <span className="font-semibold text-blue-900">{moduleSession.courseCode}</span>
+              <span className="mx-2 text-blue-600">·</span>
+              <span className="text-blue-700">{moduleSession.moduleTitle}</span>
+            </div>
+            <StageProgressPills stage={moduleStage} />
+          </div>
+        )}
         <div className="flex items-center justify-between border-b border-border bg-header px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary to-teal text-white">
@@ -313,7 +476,15 @@ export default function AIAssistant() {
                   }
                 >
                   {msg.role === 'assistant' ? (
-                    <AiMarkdown content={msg.content} isStreaming={streamingAssistantId === msg.id} />
+                    <>
+                      <AiMarkdown content={msg.content} isStreaming={streamingAssistantId === msg.id} />
+                      {msg.tasks && msg.tasks.length > 0 && <TaskCards tasks={msg.tasks} />}
+                      {msg.action && (
+                        <Button className="mt-3" onClick={msg.action.onClick}>
+                          {msg.action.label}
+                        </Button>
+                      )}
+                    </>
                   ) : (
                     msg.content
                   )}
@@ -326,7 +497,7 @@ export default function AIAssistant() {
         </div>
 
         <div className="sticky bottom-0 border-t border-border bg-header px-6 py-4">
-          {showSuggestions && (
+          {showSuggestions && !moduleSession && (
             <div className="mx-auto mb-4 max-w-3xl rounded-2xl border border-border bg-card shadow-card">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <div className="flex items-center gap-2">
@@ -384,10 +555,10 @@ export default function AIAssistant() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-              placeholder="Message AI Tutor..."
+              placeholder={moduleSession ? 'Continue this module…' : 'Message AI Tutor...'}
               className="flex-1 rounded-xl border border-border bg-input px-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <Button onClick={() => send()} disabled={isStreaming} className="rounded-full px-3">
+            <Button onClick={() => send()} disabled={isStreaming || moduleSending} className="rounded-full px-3">
               <Send className="h-4 w-4" />
             </Button>
           </div>

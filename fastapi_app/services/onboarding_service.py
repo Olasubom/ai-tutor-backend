@@ -51,6 +51,15 @@ def step2(learner_id: str, body: dict) -> dict:
     selected_ids = body.get("selected_course_ids") or []
     if selected_ids:
         update_structured_memory(learner_id, {"courses": selected_ids})
+        try:
+            from agency.core.tools.database import Database
+            from fastapi_app.services.enrollment_service import sync_enrollments_for_student
+
+            db = Database()
+            with db._SessionLocal() as session:  # noqa: SLF001
+                sync_enrollments_for_student(session, learner_id, [str(i) for i in selected_ids])
+        except Exception:
+            pass
 
     step1 = data.get("data", {}).get("step1", {})
     enroll_student(

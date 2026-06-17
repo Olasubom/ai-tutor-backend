@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Check, ChevronDown, X } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { generateQuiz, submitQuiz, type QuizGenerateResponse, type QuizSubmitResponse } from '@/api/quiz';
+import { completeModuleSession } from '@/api/moduleSession';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +31,10 @@ export default function Quiz() {
   const { topic = 'General' } = useParams();
   const [searchParams] = useSearchParams();
   const contentItemId = searchParams.get('content_item_id') ?? undefined;
+  const location = useLocation();
+  const moduleSessionId = (location.state as { moduleSessionId?: string } | null)?.moduleSessionId;
+  const moduleContentItemId =
+    (location.state as { contentItemId?: string } | null)?.contentItemId ?? contentItemId;
   const decodedTopic = decodeURIComponent(topic);
   const { learnerId } = useAuth();
   const navigate = useNavigate();
@@ -46,6 +51,7 @@ export default function Quiz() {
   const [times, setTimes] = useState<Record<string, number>>({});
   const [results, setResults] = useState<QuizSubmitResponse | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [moduleCompleted, setModuleCompleted] = useState(false);
   const qStart = useRef(Date.now());
 
   const start = async () => {
@@ -104,9 +110,17 @@ export default function Quiz() {
         selected_option: answers[q.question_id] ?? 0,
         time_taken_seconds: times[q.question_id] ?? 1,
       }));
-      const data = await submitQuiz(learnerId, quiz.quiz_id, responses, contentItemId);
+      const data = await submitQuiz(learnerId, quiz.quiz_id, responses, moduleContentItemId);
       setResults(data);
       setStep('results');
+      if (moduleSessionId) {
+        try {
+          await completeModuleSession(moduleSessionId);
+          setModuleCompleted(true);
+        } catch {
+          toast('Quiz submitted but module completion failed to sync', 'error');
+        }
+      }
       toast('Results ready. Mastery updated.', 'success');
     } catch (err) {
       setSubmitError(extractErrorMessage(err, 'Failed to submit quiz'));
@@ -216,6 +230,9 @@ export default function Quiz() {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
         <Card className="p-8 text-center">
+          {moduleCompleted && (
+            <p className="mb-4 font-semibold text-teal">Module complete! Your curriculum has been updated.</p>
+          )}
           <div className="text-[48px] font-extrabold">
             {results.score}/{results.total}
           </div>
@@ -299,7 +316,12 @@ export default function Quiz() {
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <Button onClick={() => { setStep('start'); setQuiz(null); setResults(null); setIndex(0); setAnswers({}); setLoadError(null); }}>
+          {moduleCompleted && (
+            <Button onClick={() => navigate('/student/curriculum', { state: { scrollToNext: true } })}>
+              Continue to Next Module →
+            </Button>
+          )}
+          <Button onClick={() => { setStep('start'); setQuiz(null); setResults(null); setIndex(0); setAnswers({}); setLoadError(null); setModuleCompleted(false); }}>
             Practice Again
           </Button>
           <Button variant="secondary" onClick={() => navigate('/student/library')}>

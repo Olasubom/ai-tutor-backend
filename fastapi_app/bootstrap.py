@@ -1,5 +1,3 @@
-"""Database initialization and default admin seed."""
-
 from __future__ import annotations
 
 import logging
@@ -8,18 +6,35 @@ import subprocess
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(_ROOT / "agency" / ".env", override=False)
+load_dotenv(_ROOT / ".env", override=False)
+
 from sqlalchemy import select
 
 from sqlalchemy import inspect, text
 
 from agency.core.tools.database import Base, Database
-from agency.core.tools.models import ContentItem, ModuleProgress  # noqa: F401
+from agency.core.tools.models import ContentItem, ModuleProgress, ModuleSession  # noqa: F401
 from fastapi_app.admin.models import AdminNucId, College, Course, Department  # noqa: F401
+from fastapi_app.models import (  # noqa: F401
+    Announcement,
+    CourseEnrollment,
+    CourseModule,
+    Grade,
+    LecturerQuiz,
+    LecturerQuizAttempt,
+    ModuleMaterialLink,
+    QuizQuestion,
+    QuizQuestionOption,
+    UserNotification,
+)
 from fastapi_app.auth.models import User  # noqa: F401
 from fastapi_app.auth.utils import hash_password
 
 logger = logging.getLogger(__name__)
-_ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_migrations() -> None:
@@ -86,6 +101,10 @@ def _migrate_content_items(db: Database) -> None:
         alters.append("ADD COLUMN status VARCHAR(32) DEFAULT 'approved'")
     if "uploaded_by" not in columns:
         alters.append("ADD COLUMN uploaded_by VARCHAR(36)")
+    if "extracted_text" not in columns:
+        alters.append("ADD COLUMN extracted_text TEXT")
+    if "embedding_status" not in columns:
+        alters.append("ADD COLUMN embedding_status VARCHAR(32) DEFAULT 'pending'")
     if not alters:
         return
     with db.engine.begin() as conn:
@@ -96,10 +115,29 @@ def _migrate_content_items(db: Database) -> None:
                 conn.execute(text(f"ALTER TABLE content_items {clause}"))
 
 
+def _migrate_courses(db: Database) -> None:
+    """Add lecturer_id and is_active to existing courses table."""
+    inspector = inspect(db.engine)
+    if "courses" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("courses")}
+    alters: list[str] = []
+    if "lecturer_id" not in columns:
+        alters.append("ADD COLUMN lecturer_id VARCHAR(36)")
+    if "is_active" not in columns:
+        alters.append("ADD COLUMN is_active BOOLEAN DEFAULT TRUE")
+    if not alters:
+        return
+    with db.engine.begin() as conn:
+        for clause in alters:
+            conn.execute(text(f"ALTER TABLE courses {clause}"))
+
+
 def init_database() -> None:
     db = Database()
     Base.metadata.create_all(bind=db.engine)
     _migrate_content_items(db)
+    _migrate_courses(db)
     _clean_duplicate_courses(db)
     run_migrations()
     _seed_admin(db)

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, Users } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
@@ -6,92 +6,148 @@ import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StatCard } from '@/components/ui/StatCard';
-import { SemesterBadge } from '@/components/ui/SemesterBadge';
 import { getMe } from '@/api/auth';
-import { getLecturerClassOverview } from '@/api/lecturer';
-import { fetchCourses, fetchDepartments } from '@/api/courses';
+import {
+  getCourseAnalyticsOverview,
+  getCourseStudentAnalytics,
+  listLecturerManagedCourses,
+} from '@/api/lecturerDashboard';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function LecturerDashboard() {
   const { user } = useAuth();
-  const profileQ = useQuery({ queryKey: ['lecturer-me'], queryFn: getMe, enabled: !!user });
+  const [courseId, setCourseId] = useState('');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['lecturer-overview', profileQ.data?.department],
-    queryFn: () => getLecturerClassOverview(profileQ.data?.department),
-    enabled: !!user,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-  });
-
-  const departmentsQ = useQuery({
-    queryKey: ['lecturer-departments'],
-    queryFn: () => fetchDepartments(),
+  const profileQ = useQuery({
+    queryKey: ['lecturer-me'],
+    queryFn: getMe,
     enabled: !!user,
   });
 
-  const departmentId = useMemo(() => {
-    const deptName = profileQ.data?.department;
-    if (!deptName) return '';
-    return departmentsQ.data?.find((d) => d.name === deptName)?.id ?? '';
-  }, [departmentsQ.data, profileQ.data?.department]);
+  useEffect(() => {
+    if (profileQ.data?.name && !useAuthStore.getState().name) {
+      useAuthStore.setState({ name: profileQ.data.name });
+    }
+  }, [profileQ.data?.name]);
 
   const coursesQ = useQuery({
-    queryKey: ['lecturer-dept-courses', departmentId],
-    queryFn: () => fetchCourses(departmentId),
-    enabled: !!departmentId,
+    queryKey: ['lecturer-managed-courses'],
+    queryFn: listLecturerManagedCourses,
+    enabled: !!user,
   });
 
-  const avgMastery =
-    data && data.length > 0 ? Math.round(data.reduce((a, r) => a + r.mastery, 0) / data.length) : 0;
+  const activeCourseId = courseId || coursesQ.data?.[0]?.id || '';
+
+  const overviewQ = useQuery({
+    queryKey: ['lecturer-analytics-overview', activeCourseId],
+    queryFn: () => getCourseAnalyticsOverview(activeCourseId),
+    enabled: !!activeCourseId,
+  });
+
+  const studentsQ = useQuery({
+    queryKey: ['lecturer-analytics-students', activeCourseId],
+    queryFn: () => getCourseStudentAnalytics(activeCourseId),
+    enabled: !!activeCourseId,
+  });
+
+  const aggregated = useMemo(() => {
+    const ovs = overviewQ.data;
+    if (!ovs) return { students: 0, avgMastery: 0, atRisk: 0 };
+    return {
+      students: ovs.total_students,
+      avgMastery: Math.round(ovs.avg_mastery),
+      atRisk: ovs.students_at_risk,
+    };
+  }, [overviewQ.data]);
+
+  const displayName =
+    profileQ.data?.name?.split(' ')[0] || user?.name?.split(' ')[0] || profileQ.data?.email?.split('@')[0] || 'Lecturer';
 
   return (
     <div className="space-y-6">
       <div>
         <Badge variant="muted">LECTURER PORTAL</Badge>
-        <h1 className="mt-2 text-[28px] font-extrabold tracking-tight">Welcome, {user?.name?.split(' ')[0]}.</h1>
+        <h1 className="mt-2 text-[28px] font-extrabold tracking-tight">Welcome, {displayName}.</h1>
         <p className="text-text-secondary">
           {profileQ.data?.department
-            ? `${profileQ.data.department} — class overview and student mastery.`
-            : 'Monitor student progress in your department.'}
+            ? `${profileQ.data.department} — live analytics from enrolled students.`
+            : 'Monitor student progress across your courses.'}
         </p>
       </div>
 
+      {coursesQ.data && coursesQ.data.length > 1 && (
+        <select
+          className="max-w-md rounded-lg border border-border bg-input px-3 py-2 text-[14px]"
+          value={activeCourseId}
+          onChange={(e) => {
+            setCourseId(e.target.value);
+            localStorage.setItem('lecturerActiveCourseId', e.target.value);
+          }}
+        >
+          {coursesQ.data.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.code} — {c.title}
+            </option>
+          ))}
+        </select>
+      )}
+
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Students" value={String(data?.length ?? 0)} trend="In your department" />
-        <StatCard label="Avg. Mastery" value={`${avgMastery}%`} trend="Across enrolled students" />
         <StatCard
-          label="Staff ID"
-          value={profileQ.data?.nuc_staff_id ?? '—'}
-          trend={<span className="text-teal">Verified lecturer</span>}
+          label="Students"
+          value={overviewQ.isLoading ? '…' : String(aggregated.students)}
+          trend={activeCourseId ? 'Enrolled in selected course' : 'Select a course'}
+        />
+        <StatCard
+          label="Avg. Mastery"
+          value={overviewQ.isLoading ? '…' : `${aggregated.avgMastery}%`}
+          trend="BKT profile average"
+        />
+        <StatCard
+          label="At risk"
+          value={overviewQ.isLoading ? '…' : String(aggregated.atRisk)}
+          trend="Mastery below 40%"
         />
       </div>
+
+      {overviewQ.data && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="p-4">
+            <div className="text-[13px] text-text-muted">Active this week</div>
+            <div className="text-[24px] font-bold">{overviewQ.data.active_this_week}</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-[13px] text-text-muted">Struggled topics</div>
+            <div className="mt-1 text-[14px]">
+              {overviewQ.data.most_struggled_topics.length
+                ? overviewQ.data.most_struggled_topics.join(', ')
+                : 'None yet'}
+            </div>
+            <div className="mt-1 text-[12px] text-text-muted">2+ quiz attempts and mastery below 40%</div>
+          </Card>
+        </div>
+      )}
 
       <Card className="p-6">
         <div className="mb-4 flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-primary" />
-          <h2 className="text-[18px] font-bold">Department courses</h2>
+          <h2 className="text-[18px] font-bold">Your courses</h2>
         </div>
         {coursesQ.isLoading ? (
           <Skeleton className="h-24" />
         ) : !coursesQ.data?.length ? (
-          <p className="text-text-secondary">No courses listed for your department yet.</p>
+          <p className="text-text-secondary">
+            No courses in your department yet. Use the Courses page to create one, or ask admin to run lecturer
+            backfill.
+          </p>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {coursesQ.data.map((course) => (
               <div key={course.id} className="rounded-xl border border-border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[16px] font-bold">{course.course_code}</span>
-                      <SemesterBadge semester={course.semester} size="md" />
-                    </div>
-                    <p className="mt-1 text-[14px] text-text-secondary">{course.course_title}</p>
-                    <p className="mt-1 text-[12px] text-text-muted">
-                      Level {course.level} · {course.units} credit units
-                    </p>
-                  </div>
-                </div>
+                <div className="font-bold">{course.code}</div>
+                <p className="mt-1 text-[14px] text-text-secondary">{course.title}</p>
+                <p className="mt-1 text-[12px] text-text-muted">Level {course.level}</p>
               </div>
             ))}
           </div>
@@ -103,19 +159,24 @@ export default function LecturerDashboard() {
           <Users className="h-5 w-5 text-primary" />
           <h2 className="text-[18px] font-bold">Student mastery</h2>
         </div>
-        {isLoading ? (
+        {studentsQ.isLoading ? (
           <Skeleton className="h-24" />
-        ) : !data?.length ? (
-          <p className="text-text-secondary">No students enrolled in your department yet.</p>
+        ) : !studentsQ.data?.length ? (
+          <p className="text-text-secondary">
+            No enrolled students for this course. Students are enrolled when they select courses during onboarding.
+          </p>
         ) : (
           <div className="space-y-4">
-            {data.map((row) => (
-              <div key={row.student.user_id}>
+            {studentsQ.data.map((row) => (
+              <div key={row.student_id}>
                 <div className="mb-1 flex justify-between text-[14px]">
-                  <span className="font-medium">{row.student.name}</span>
-                  <span className="text-text-muted">{row.mastery}%</span>
+                  <span className="font-medium">
+                    {row.name}{' '}
+                    <span className="text-[12px] text-text-muted">({row.status.replace('_', ' ')})</span>
+                  </span>
+                  <span className="text-text-muted">{Math.round(row.overall_mastery)}%</span>
                 </div>
-                <ProgressBar value={row.mastery} />
+                <ProgressBar value={Math.round(row.overall_mastery)} />
               </div>
             ))}
           </div>

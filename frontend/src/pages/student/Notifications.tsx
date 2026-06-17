@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  Megaphone,
   RefreshCw,
   TrendingDown,
 } from 'lucide-react';
@@ -38,6 +39,10 @@ function iconFor(type: AppNotification['type']) {
       return <BookOpen className="h-4 w-4 text-primary" />;
     case 'review_due':
       return <RefreshCw className="h-4 w-4 text-purple-500" />;
+    case 'announcement':
+      return <Megaphone className="h-4 w-4 text-primary" />;
+    case 'quiz_published':
+      return <BookOpen className="h-4 w-4 text-teal" />;
     default:
       return <AlertTriangle className="h-4 w-4 text-error" />;
   }

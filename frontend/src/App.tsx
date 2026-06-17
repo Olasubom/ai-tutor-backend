@@ -30,10 +30,14 @@ import Goals from '@/pages/student/Goals';
 import Tasks from '@/pages/student/Tasks';
 import Notifications from '@/pages/student/Notifications';
 import Analytics from '@/pages/student/Analytics';
+import LecturerCourses from '@/pages/lecturer/Courses';
+import LecturerGrades from '@/pages/lecturer/Grades';
+import LecturerQuizzes from '@/pages/lecturer/Quizzes';
 import LecturerDashboard from '@/pages/lecturer/Dashboard';
 import LecturerStudents from '@/pages/lecturer/Students';
 import LecturerSettings from '@/pages/lecturer/Settings';
 import AtRisk from '@/pages/lecturer/AtRisk';
+import LecturerAIAssistant from '@/pages/lecturer/AIAssistant';
 import UploadMaterial from '@/pages/lecturer/UploadMaterial';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import AdminMaterials from '@/pages/admin/Materials';
@@ -99,9 +103,13 @@ export default function App() {
           <Route element={<LecturerRoute />}>
             <Route element={<LecturerShell />}>
               <Route path="/lecturer/dashboard" element={<LecturerDashboard />} />
+              <Route path="/lecturer/courses" element={<LecturerCourses />} />
+              <Route path="/lecturer/grades" element={<LecturerGrades />} />
+              <Route path="/lecturer/quizzes" element={<LecturerQuizzes />} />
               <Route path="/lecturer/upload" element={<UploadMaterial />} />
               <Route path="/lecturer/students" element={<LecturerStudents />} />
               <Route path="/lecturer/at-risk" element={<AtRisk />} />
+              <Route path="/lecturer/ai-assistant" element={<LecturerAIAssistant />} />
               <Route path="/lecturer/settings" element={<LecturerSettings />} />
             </Route>
           </Route>

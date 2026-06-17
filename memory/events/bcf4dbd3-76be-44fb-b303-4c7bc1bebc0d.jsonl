@@ -81,3 +81,27 @@
 {"timestamp": "2026-06-14T09:51:44.101697+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
 {"timestamp": "2026-06-14T09:51:55.160118+00:00", "event_type": "page_view", "metadata": {"page": "/student/ai-assistant"}}
 {"timestamp": "2026-06-14T09:51:57.432265+00:00", "event_type": "page_view", "metadata": {"page": "/student/settings"}}
+{"timestamp": "2026-06-16T16:59:36.956938+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-16T16:59:36.956938+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-16T16:59:48.078219+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-16T17:00:04.882865+00:00", "event_type": "page_view", "metadata": {"page": "/student/settings"}}
+{"timestamp": "2026-06-16T17:00:35.090508+00:00", "event_type": "page_view", "metadata": {"page": "/student/ai-assistant"}}
+{"timestamp": "2026-06-16T17:00:37.293734+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}
+{"timestamp": "2026-06-16T17:00:51.481831+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-16T17:00:57.125815+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-16T17:01:03.308735+00:00", "event_type": "page_view", "metadata": {"page": "/student/notifications"}}
+{"timestamp": "2026-06-16T17:01:08.272403+00:00", "event_type": "page_view", "metadata": {"page": "/student/tasks"}}
+{"timestamp": "2026-06-16T17:01:42.086420+00:00", "event_type": "task_create", "metadata": {"task_id": "b764a415-e6b1-430f-98c1-0f8cad0c5a01"}}
+{"timestamp": "2026-06-16T17:01:48.104970+00:00", "event_type": "task_complete", "task_id": "43bd242f-2b39-4585-92e8-ca3bcbf99488"}
+{"timestamp": "2026-06-16T17:01:48.106503+00:00", "event_type": "task_complete", "metadata": {"task_id": "43bd242f-2b39-4585-92e8-ca3bcbf99488"}}
+{"timestamp": "2026-06-16T17:02:03.883128+00:00", "event_type": "task_create", "metadata": {"task_id": "67d81fe3-ea68-486f-91e1-75f1a12ba72f"}}
+{"timestamp": "2026-06-16T17:02:06.799387+00:00", "event_type": "task_complete", "task_id": "c27a2470-10ba-4cc5-8826-88670a33e13f"}
+{"timestamp": "2026-06-16T17:02:06.800959+00:00", "event_type": "task_complete", "metadata": {"task_id": "c27a2470-10ba-4cc5-8826-88670a33e13f"}}
+{"timestamp": "2026-06-16T17:51:52.817763+00:00", "event_type": "page_view", "metadata": {"page": "/student/tasks"}}
+{"timestamp": "2026-06-16T17:51:52.833784+00:00", "event_type": "page_view", "metadata": {"page": "/student/tasks"}}
+{"timestamp": "2026-06-16T22:11:25.452205+00:00", "event_type": "page_view", "metadata": {"page": "/student/tasks"}}
+{"timestamp": "2026-06-16T22:11:25.458555+00:00", "event_type": "page_view", "metadata": {"page": "/student/tasks"}}
+{"timestamp": "2026-06-17T10:33:05.897870+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-17T10:33:06.140049+00:00", "event_type": "page_view", "metadata": {"page": "/student/dashboard"}}
+{"timestamp": "2026-06-17T10:33:26.367338+00:00", "event_type": "page_view", "metadata": {"page": "/student/curriculum"}}
+{"timestamp": "2026-06-17T10:33:27.624059+00:00", "event_type": "page_view", "metadata": {"page": "/student/library"}}

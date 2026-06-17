@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Lock, Play, Sparkles } from 'lucide-react';
+import { CheckCircle2, Lock, Megaphone, Play, Sparkles } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -12,11 +12,12 @@ import {
   fetchCurriculum,
   requestCurriculumUpdate,
   resolveModuleUrl,
-  updateModuleProgress,
   type CurriculumModule,
 } from '@/api/curriculum';
+import { startModuleSession } from '@/api/moduleSession';
 import { openMaterialPreview, uploadIdFromContentItemId } from '@/api/upload';
 import { getMe } from '@/api/auth';
+import { listCourseAnnouncements } from '@/api/lecturerDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
@@ -31,12 +32,12 @@ function uiStatus(step: CurriculumModule): 'COMPLETED' | 'IN PROGRESS' | 'LOCKED
 export default function Curriculum() {
   const { learnerId } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToastStore((s) => s.add);
   const qc = useQueryClient();
   const [tab, setTab] = useState('all');
   const [activeCourse, setActiveCourse] = useState<UniversityCourse | null>(null);
-  const [markCompleteId, setMarkCompleteId] = useState<string | null>(null);
-  const [progressLoading, setProgressLoading] = useState<string | null>(null);
+  const [continueLoading, setContinueLoading] = useState<string | null>(null);
 
   const meQ = useQuery({ queryKey: ['auth-me'], queryFn: getMe, enabled: !!learnerId });
   const enrolledIds = (meQ.data?.courses as string[] | undefined) ?? [];
@@ -59,11 +60,24 @@ export default function Curriculum() {
     }
   }, [activeCourse?.id, qc]);
 
+  useEffect(() => {
+    if ((location.state as { scrollToNext?: boolean } | null)?.scrollToNext) {
+      qc.invalidateQueries({ queryKey: ['curriculum', activeCourse?.id] });
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, activeCourse?.id, qc, navigate, location.pathname]);
+
   const curriculumQ = useQuery({
     queryKey: ['curriculum', activeCourse?.id],
     queryFn: () => fetchCurriculum(learnerId!, activeCourse!.id),
     enabled: !!learnerId && !!activeCourse?.id,
     staleTime: 30_000,
+  });
+
+  const announcementsQ = useQuery({
+    queryKey: ['course-announcements', activeCourse?.id],
+    queryFn: () => listCourseAnnouncements(activeCourse!.id),
+    enabled: !!activeCourse?.id,
   });
 
   const refresh = useMutation({
@@ -78,22 +92,37 @@ export default function Curriculum() {
     onError: () => toast('Could not generate update right now.', 'error'),
   });
 
-  const markComplete = async (contentItemId: string) => {
-    if (!learnerId) return;
-    setProgressLoading(contentItemId);
+  const handleContinue = async (module: CurriculumModule) => {
+    const contentItemId = module.content_item_id || module.item_id;
+    if (!contentItemId) return;
+    setContinueLoading(contentItemId);
     try {
-      await updateModuleProgress(learnerId, contentItemId, 100, 'completed');
-      setMarkCompleteId(null);
-      await qc.invalidateQueries({ queryKey: ['curriculum', activeCourse?.id] });
-      toast('Module marked complete', 'success');
+      const res = await startModuleSession(contentItemId);
+      navigate('/student/ai-assistant', {
+        state: {
+          moduleSession: {
+            sessionId: res.session_id,
+            stage: res.stage,
+            courseCode: activeCourse?.course_code ?? '',
+            moduleTitle: module.title ?? 'Module',
+            pdfUrl: res.pdf_url,
+            contentItemId,
+            courseId: activeCourse?.id,
+            initialMessage: res.message,
+            tasks: res.tasks,
+            redirectToQuiz: res.redirect_to_quiz,
+            quizTopic: res.topic,
+          },
+        },
+      });
     } catch {
-      toast('Could not update progress', 'error');
+      toast('Could not start module session', 'error');
     } finally {
-      setProgressLoading(null);
+      setContinueLoading(null);
     }
   };
 
-  const handleContinue = async (module: CurriculumModule) => {
+  const handleViewPdf = async (module: CurriculumModule) => {
     const contentItemId = module.content_item_id || module.item_id;
     const sourceType = (module.source_type || '').toLowerCase();
     const sourceUrl = module.source_url;
@@ -103,7 +132,6 @@ export default function Curriculum() {
       if (uploadId) {
         try {
           await openMaterialPreview(uploadId);
-          if (contentItemId) setMarkCompleteId(contentItemId);
         } catch {
           toast('Could not open file', 'error');
         }
@@ -111,13 +139,9 @@ export default function Curriculum() {
       }
     }
 
-    if (sourceUrl && (sourceUrl.startsWith('http') || sourceUrl.startsWith('/'))) {
+    if (sourceUrl) {
       window.open(resolveModuleUrl(sourceUrl), '_blank', 'noopener,noreferrer');
-      if (contentItemId) await markComplete(contentItemId);
-      return;
     }
-
-    navigate(`/student/ai-assistant?topic=${encodeURIComponent(module.title || '')}`);
   };
 
   const path = curriculumQ.data?.modules ?? [];
@@ -193,6 +217,26 @@ export default function Curriculum() {
         </div>
       )}
 
+      {(announcementsQ.data?.length ?? 0) > 0 && (
+        <Card className="border-primary/20 bg-primary/5 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Megaphone className="h-4 w-4 text-primary" />
+            <h2 className="text-[15px] font-bold">Course announcements</h2>
+          </div>
+          <div className="space-y-3">
+            {announcementsQ.data!.map((a) => (
+              <div key={a.id} className="rounded-lg border border-border bg-card px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{a.title}</span>
+                  {a.is_pinned && <Badge variant="primary">Pinned</Badge>}
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-[14px] text-text-secondary">{a.body}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Tabs
         active={tab}
         onChange={setTab}
@@ -265,19 +309,27 @@ export default function Curriculum() {
                       <div className="h-[5px] w-full overflow-hidden rounded-full bg-border">
                         <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
                       </div>
-                      <Button className="mt-4" onClick={() => handleContinue(step)}>
-                        Continue →
-                      </Button>
-                      {markCompleteId === contentItemId && contentItemId && (
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
                         <Button
-                          className="mt-2"
-                          variant="secondary"
-                          disabled={progressLoading === contentItemId}
-                          onClick={() => markComplete(contentItemId)}
+                          disabled={continueLoading === contentItemId}
+                          onClick={() => handleContinue(step)}
                         >
-                          Mark as Complete
+                          {continueLoading === contentItemId ? 'Starting…' : 'Continue →'}
                         </Button>
-                      )}
+                        {(step.source_url ||
+                          uploadIdFromContentItemId(contentItemId) ||
+                          ['pdf', 'document', 'slides'].includes(
+                            String(step.source_type ?? '').toLowerCase(),
+                          )) && (
+                          <button
+                            type="button"
+                            onClick={() => handleViewPdf(step)}
+                            className="text-xs text-text-muted underline hover:text-text-secondary"
+                          >
+                            View PDF
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
 
