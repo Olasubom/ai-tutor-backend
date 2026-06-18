@@ -81,7 +81,7 @@ export interface AiQuizSummaryRow {
 }
 
 export interface GradeRow {
-  id: string;
+  id: string | null;
   student_id: string;
   student_name?: string;
   student_email?: string;
@@ -93,6 +93,8 @@ export interface GradeRow {
   grade_point?: number | null;
   remark?: string | null;
   comment?: string | null;
+  quiz_avg?: number | null;
+  quiz_count?: number | null;
 }
 
 export interface LecturerQuiz {

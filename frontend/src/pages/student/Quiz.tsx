@@ -52,6 +52,11 @@ export default function Quiz() {
   const [results, setResults] = useState<QuizSubmitResponse | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [moduleCompleted, setModuleCompleted] = useState(false);
+  const [nextModule, setNextModule] = useState<{
+    content_item_id: string;
+    title: string;
+    module_number: number;
+  } | null>(null);
   const qStart = useRef(Date.now());
 
   const start = async () => {
@@ -115,8 +120,9 @@ export default function Quiz() {
       setStep('results');
       if (moduleSessionId) {
         try {
-          await completeModuleSession(moduleSessionId);
+          const completion = await completeModuleSession(moduleSessionId);
           setModuleCompleted(true);
+          setNextModule(completion.next_module ?? null);
         } catch {
           toast('Quiz submitted but module completion failed to sync', 'error');
         }
@@ -317,11 +323,25 @@ export default function Quiz() {
 
         <div className="flex flex-wrap gap-3">
           {moduleCompleted && (
-            <Button onClick={() => navigate('/student/curriculum', { state: { scrollToNext: true } })}>
-              Continue to Next Module →
-            </Button>
+            <div className="w-full rounded-xl border border-teal-200 bg-teal-50 p-4 text-center">
+              <p className="font-semibold text-teal-800">Module complete!</p>
+              {nextModule ? (
+                <Button
+                  className="mt-3"
+                  onClick={() =>
+                    navigate('/student/curriculum', { state: { scrollToNext: true } })
+                  }
+                >
+                  Continue to Module {nextModule.module_number}: {nextModule.title} →
+                </Button>
+              ) : (
+                <Button className="mt-3" onClick={() => navigate('/student/curriculum')}>
+                  Back to Curriculum →
+                </Button>
+              )}
+            </div>
           )}
-          <Button onClick={() => { setStep('start'); setQuiz(null); setResults(null); setIndex(0); setAnswers({}); setLoadError(null); setModuleCompleted(false); }}>
+          <Button onClick={() => { setStep('start'); setQuiz(null); setResults(null); setIndex(0); setAnswers({}); setLoadError(null); setModuleCompleted(false); setNextModule(null); }}>
             Practice Again
           </Button>
           <Button variant="secondary" onClick={() => navigate('/student/library')}>

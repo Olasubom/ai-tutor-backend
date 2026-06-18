@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import {
-  getCourseStudentAnalytics,
   listLecturerManagedCourses,
   type GradeRow,
   listCourseGrades,
@@ -29,12 +28,6 @@ export default function LecturerGrades() {
   });
 
   const activeCourseId = courseId || coursesQ.data?.[0]?.id || '';
-
-  const studentsQ = useQuery({
-    queryKey: ['lecturer-course-students', activeCourseId],
-    queryFn: () => getCourseStudentAnalytics(activeCourseId),
-    enabled: !!activeCourseId,
-  });
 
   const gradesQ = useQuery({
     queryKey: ['lecturer-course-grades', activeCourseId],
@@ -99,11 +92,11 @@ export default function LecturerGrades() {
       </Card>
 
       <Card className="overflow-x-auto p-0">
-        {studentsQ.isLoading || gradesQ.isLoading ? (
+        {gradesQ.isLoading ? (
           <div className="p-6">
             <Skeleton className="h-24" />
           </div>
-        ) : !studentsQ.data?.length ? (
+        ) : !gradesQ.data?.length ? (
           <p className="p-6 text-text-secondary">No enrolled students for this course yet.</p>
         ) : (
           <table className="w-full min-w-[720px] text-left text-[14px]">
@@ -120,14 +113,13 @@ export default function LecturerGrades() {
               </tr>
             </thead>
             <tbody>
-              {studentsQ.data.map((s) => {
-                const g = gradeByStudent[s.student_id];
-                const draft = drafts[s.student_id] ?? {};
+              {gradesQ.data.map((g) => {
+                const draft = drafts[g.student_id] ?? {};
                 return (
-                  <tr key={s.student_id} className="border-b border-border">
+                  <tr key={g.student_id} className="border-b border-border">
                     <td className="px-4 py-3">
-                      <div className="font-medium">{s.name}</div>
-                      <div className="text-[12px] text-text-muted">{s.email}</div>
+                      <div className="font-medium">{g.student_name}</div>
+                      <div className="text-[12px] text-text-muted">{g.student_email}</div>
                     </td>
                     <td className="px-4 py-3">
                       <Input
@@ -137,7 +129,7 @@ export default function LecturerGrades() {
                         max={40}
                         placeholder={g?.ca_score != null ? String(g.ca_score) : '0'}
                         value={draft.ca ?? ''}
-                        onChange={(e) => setDraft(s.student_id, 'ca', e.target.value)}
+                        onChange={(e) => setDraft(g.student_id, 'ca', e.target.value)}
                       />
                     </td>
                     <td className="px-4 py-3">
@@ -148,19 +140,19 @@ export default function LecturerGrades() {
                         max={60}
                         placeholder={g?.exam_score != null ? String(g.exam_score) : '0'}
                         value={draft.exam ?? ''}
-                        onChange={(e) => setDraft(s.student_id, 'exam', e.target.value)}
+                        onChange={(e) => setDraft(g.student_id, 'exam', e.target.value)}
                       />
                     </td>
                     <td className="px-4 py-3">
-                      {s.quiz_average != null ? (
-                        <span className={`font-medium ${s.quiz_average >= 60 ? 'text-teal' : 'text-error'}`}>
-                          {Math.round(s.quiz_average)}%
+                      {g.quiz_avg != null ? (
+                        <span className={`font-medium ${g.quiz_avg >= 60 ? 'text-teal' : 'text-error'}`}>
+                          {Math.round(g.quiz_avg)}%
                         </span>
                       ) : (
                         <span className="text-text-muted">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-text-secondary">{s.quiz_count ?? 0}</td>
+                    <td className="px-4 py-3 text-text-secondary">{g.quiz_count ?? 0}</td>
                     <td className="px-4 py-3">{g?.total_score != null ? `${g.total_score}%` : '—'}</td>
                     <td className="px-4 py-3">
                       {g?.grade_letter ? (
@@ -176,7 +168,7 @@ export default function LecturerGrades() {
                       <Button
                         variant="secondary"
                         disabled={saveMut.isPending}
-                        onClick={() => saveMut.mutate(s.student_id)}
+                        onClick={() => saveMut.mutate(g.student_id)}
                       >
                         Save
                       </Button>

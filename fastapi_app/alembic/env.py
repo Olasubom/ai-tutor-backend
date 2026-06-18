@@ -16,8 +16,10 @@ from dotenv import load_dotenv
 load_dotenv(_ROOT / "agency" / ".env", override=True)
 
 from agency.core.tools.database import Base  # noqa: E402
+import agency.core.tools.models  # noqa: F401, E402
 import fastapi_app.admin.models  # noqa: F401, E402
 import fastapi_app.auth.models  # noqa: F401, E402
+import fastapi_app.models.lecturer_dashboard  # noqa: F401, E402
 
 config = context.config
 

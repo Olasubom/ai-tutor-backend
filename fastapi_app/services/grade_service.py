@@ -67,8 +67,15 @@ def upsert_grade(
     return row
 
 
-def grade_to_dict(g: Grade, student_name: str = "", student_email: str = "") -> dict:
-    return {
+def grade_to_dict(
+    g: Grade,
+    student_name: str = "",
+    student_email: str = "",
+    *,
+    quiz_avg: Optional[float] = None,
+    quiz_count: Optional[int] = None,
+) -> dict:
+    row = {
         "id": g.id,
         "student_id": g.student_id,
         "student_name": student_name,
@@ -84,6 +91,58 @@ def grade_to_dict(g: Grade, student_name: str = "", student_email: str = "") -> 
         "graded_at": g.graded_at.isoformat() if g.graded_at else None,
         "updated_at": g.updated_at.isoformat() if g.updated_at else None,
     }
+    if quiz_avg is not None:
+        row["quiz_avg"] = quiz_avg
+    if quiz_count is not None:
+        row["quiz_count"] = quiz_count
+    return row
+
+
+def list_course_grades_for_course(db: Session, course_id: str) -> list[dict]:
+    """All enrolled students with formal grades and quiz participation stats."""
+    from fastapi_app.services.enrollment_service import list_course_students
+
+    grade_rows = {
+        g.student_id: g for g in db.scalars(select(Grade).where(Grade.course_id == course_id)).all()
+    }
+    out: list[dict] = []
+    for student in list_course_students(db, course_id):
+        sid = student["student_id"]
+        quiz_avg = student.get("quiz_average")
+        quiz_count = student.get("quiz_count")
+        grade = grade_rows.get(sid)
+        if grade:
+            out.append(
+                grade_to_dict(
+                    grade,
+                    student_name=student["name"],
+                    student_email=student["email"],
+                    quiz_avg=quiz_avg,
+                    quiz_count=quiz_count,
+                )
+            )
+        else:
+            out.append(
+                {
+                    "id": None,
+                    "student_id": sid,
+                    "student_name": student["name"],
+                    "student_email": student["email"],
+                    "course_id": course_id,
+                    "ca_score": None,
+                    "exam_score": None,
+                    "total_score": None,
+                    "grade_letter": None,
+                    "grade_point": None,
+                    "remark": None,
+                    "comment": None,
+                    "graded_at": None,
+                    "updated_at": None,
+                    "quiz_avg": quiz_avg,
+                    "quiz_count": quiz_count,
+                }
+            )
+    return out
 
 
 def export_grades_csv(db: Session, course_id: str) -> str:

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from fastapi_app.admin.models import Course
 from fastapi_app.auth.models import User
 from fastapi_app.auth.utils import require_role
 from fastapi_app.database import get_db
@@ -21,6 +22,7 @@ from fastapi_app.schemas.lecturer_dashboard import (
     QuizUpdate,
 )
 from fastapi_app.services import lecturer_quiz_service as svc
+from fastapi_app.services import lecturer_course_service as course_svc
 from fastapi_app.services import notifications_service
 
 router = APIRouter(tags=["Lecturer Quizzes"])
@@ -61,6 +63,23 @@ def get_quiz(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/lecturer/courses/{course_id}/ai-quiz-results")
+def get_course_ai_quiz_results(
+    course_id: str,
+    db: Session = Depends(get_db),
+    current: Annotated[dict, Depends(require_role("lecturer", "admin"))] = None,
+):
+    user = _user(db, current)
+    course = db.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    try:
+        course_svc.assert_lecturer_owns_course(db, user, course)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return svc.get_ai_quiz_summary(db, course_id)
 
 
 @router.get("/lecturer/modules/{module_id}/quizzes")

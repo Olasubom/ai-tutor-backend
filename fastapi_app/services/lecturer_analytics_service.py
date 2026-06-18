@@ -14,7 +14,6 @@ from fastapi_app.admin.models import Course
 from fastapi_app.auth.models import User
 from fastapi_app.models.lecturer_dashboard import CourseEnrollment, CourseModule, LecturerQuiz, LecturerQuizAttempt
 from fastapi_app.services.enrollment_service import _last_active, list_course_students
-from fastapi_app.services.memory_files import read_jsonl
 
 
 def get_course_overview(db: Session, course_id: str) -> dict:
@@ -124,78 +123,6 @@ def get_course_students_analytics(db: Session, course_id: str) -> List[dict]:
             }
         )
     return out
-
-
-def get_ai_quiz_summary(db: Session, course_id: str) -> List[dict]:
-    """Aggregate AI/module quiz scores from legacy events and lecturer quiz attempts."""
-    from agency.core.tools.models import ContentItem
-
-    items = db.scalars(
-        select(ContentItem).where(
-            ContentItem.course_id == course_id,
-            ContentItem.status == "approved",
-        )
-    ).all()
-    student_ids = [
-        r
-        for r in db.scalars(
-            select(CourseEnrollment.student_id).where(
-                CourseEnrollment.course_id == course_id,
-                CourseEnrollment.status == "active",
-            )
-        ).all()
-    ]
-
-    summaries: List[dict] = []
-    for item in items:
-        topic = str(item.title or item.topic or "").strip()
-        if not topic:
-            continue
-        scores: List[float] = []
-        topic_lower = topic.lower()
-        for sid in student_ids:
-            for e in read_jsonl(f"events/{sid}.jsonl"):
-                if e.get("event_type") != "quiz_submit" and "quiz_id" not in e:
-                    continue
-                evt_topic = str(e.get("topic") or "").lower()
-                if evt_topic == topic_lower or topic_lower in evt_topic or evt_topic in topic_lower:
-                    pct = e.get("percentage")
-                    if pct is not None:
-                        scores.append(float(pct))
-        if not scores:
-            continue
-        summaries.append(
-            {
-                "topic": topic,
-                "type": "ai_generated",
-                "attempts": len(scores),
-                "avg_score": round(sum(scores) / len(scores), 1),
-                "pass_rate": round(sum(1 for s in scores if s >= 60) / len(scores) * 100),
-            }
-        )
-
-    module_ids = db.scalars(select(CourseModule.id).where(CourseModule.course_id == course_id)).all()
-    if module_ids:
-        quiz_ids = db.scalars(select(LecturerQuiz.id).where(LecturerQuiz.module_id.in_(module_ids))).all()
-        if quiz_ids:
-            attempt_scores = db.scalars(
-                select(LecturerQuizAttempt.score).where(
-                    LecturerQuizAttempt.quiz_id.in_(quiz_ids),
-                    LecturerQuizAttempt.score.isnot(None),
-                )
-            ).all()
-            if attempt_scores:
-                scores = [float(s) for s in attempt_scores]
-                summaries.append(
-                    {
-                        "topic": "Published module quizzes",
-                        "type": "lecturer_quiz",
-                        "attempts": len(scores),
-                        "avg_score": round(sum(scores) / len(scores), 1),
-                        "pass_rate": round(sum(1 for s in scores if s >= 60) / len(scores) * 100),
-                    }
-                )
-    return summaries
 
 
 def get_module_analytics(db: Session, course_id: str, module_id: str) -> dict:

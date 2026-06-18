@@ -74,6 +74,20 @@ def get_course(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/{course_id}/materials")
+def get_course_materials(
+    course_id: str,
+    db: Session = Depends(get_db),
+    current: Annotated[dict, Depends(require_role("lecturer", "admin"))] = None,
+):
+    try:
+        return svc.list_course_materials(db, _user(db, current), course_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.put("/{course_id}")
 def update_course(
     course_id: str,

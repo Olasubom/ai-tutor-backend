@@ -12,6 +12,7 @@ from fastapi_app.admin.models import Course, Department
 from fastapi_app.auth.models import User
 from fastapi_app.models.lecturer_dashboard import CourseModule, ModuleMaterialLink
 from fastapi_app.services import upload_service
+from agency.core.tools.models import ContentItem
 
 
 def _resolve_department_id(db: Session, user: User) -> Optional[str]:
@@ -268,3 +269,33 @@ def unlink_material(db: Session, user: User, module_id: str, upload_id: str) -> 
     if row:
         db.delete(row)
         db.commit()
+
+
+def list_course_materials(db: Session, user: User, course_id: str) -> List[dict]:
+    """Approved ContentItem rows linked to a course (student curriculum modules)."""
+    course = db.get(Course, course_id)
+    if not course:
+        raise ValueError("Course not found")
+    assert_lecturer_owns_course(db, user, course)
+
+    items = db.scalars(
+        select(ContentItem)
+        .where(
+            ContentItem.course_id == course_id,
+            ContentItem.status == "approved",
+        )
+        .order_by(ContentItem.module_order.asc().nullslast(), ContentItem.created_at.asc())
+    ).all()
+    return [
+        {
+            "id": item.item_id,
+            "title": item.title,
+            "description": (item.payload_json or {}).get("description"),
+            "source_type": item.source_type,
+            "module_order": item.module_order,
+            "status": item.status,
+            "embedding_status": item.embedding_status or "pending",
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+        }
+        for item in items
+    ]

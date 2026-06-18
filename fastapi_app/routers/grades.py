@@ -83,18 +83,7 @@ def list_course_grades(
         course_svc.assert_lecturer_owns_course(db, user, course)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    rows = db.scalars(select(Grade).where(Grade.course_id == course_id)).all()
-    out = []
-    for g in rows:
-        student = db.get(User, g.student_id)
-        out.append(
-            grade_service.grade_to_dict(
-                g,
-                student_name=student.name if student else "",
-                student_email=student.email if student else "",
-            )
-        )
-    return out
+    return grade_service.list_course_grades_for_course(db, course_id)
 
 
 @router.put("/lecturer/grades/{grade_id}")

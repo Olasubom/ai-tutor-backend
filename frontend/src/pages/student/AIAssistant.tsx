@@ -18,6 +18,7 @@ import { formatAssistantMessage, looksLikeRawJsonStream } from '@/utils/formatAs
 import type { ModuleSessionStage } from '@/api/moduleSession';
 
 const STAGE_LABELS: { id: ModuleSessionStage; label: string }[] = [
+  { id: 'onboarding', label: 'Intro' },
   { id: 'explanation', label: 'Explanation' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'quiz', label: 'Quiz' },
@@ -47,22 +48,33 @@ function StageProgressPills({ stage }: { stage: ModuleSessionStage }) {
 function TaskCards({ tasks }: { tasks: Recommendation[] }) {
   return (
     <div className="mt-3 space-y-2">
-      {tasks.map((task) => (
-        <div key={task.item_id} className="rounded-lg border border-border bg-page p-3 text-left">
-          <div className="font-semibold">{task.title}</div>
-          {task.description && <p className="mt-1 text-[13px] text-text-secondary">{task.description}</p>}
-          {task.source_url && (
-            <a
-              href={task.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-block text-[13px] text-primary underline"
-            >
-              {task.modality === 'video' ? 'Watch Video' : 'Read'}
-            </a>
-          )}
-        </div>
-      ))}
+      {tasks.map((task) => {
+        const key = task.item_id || task.title;
+        const isFallback = Boolean((task as Recommendation & { is_fallback?: boolean }).is_fallback);
+        return (
+          <div key={key} className="rounded-lg border border-border bg-card p-3 text-left">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{task.title}</p>
+                {task.description && (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-text-secondary">{task.description}</p>
+                )}
+                {isFallback && <p className="mt-0.5 text-xs text-amber-600">Suggested search</p>}
+              </div>
+              {task.source_url && (
+                <a
+                  href={task.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 rounded-md bg-primary px-3 py-1 text-xs font-medium text-white hover:bg-primary/90"
+                >
+                  {task.modality === 'video' || task.source_type === 'video' ? '▶ Watch' : '📖 Read'}
+                </a>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

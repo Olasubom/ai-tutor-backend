@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 import type { Recommendation } from '@/types';
 
-export type ModuleSessionStage = 'explanation' | 'tasks' | 'quiz' | 'completed';
+export type ModuleSessionStage = 'onboarding' | 'explanation' | 'tasks' | 'quiz' | 'completed';
 
 export interface ModuleSessionState {
   sessionId: string;
@@ -56,11 +56,24 @@ export async function continueModuleSession(
   return data;
 }
 
-export async function completeModuleSession(sessionId: string): Promise<{ message: string; stage: string }> {
-  const { data } = await apiClient.post<{ message: string; stage: string }>(
-    '/tutor/module-session/complete',
-    { session_id: sessionId },
-  );
+export async function completeModuleSession(sessionId: string): Promise<{
+  message: string;
+  stage: string;
+  next_module?: {
+    content_item_id: string;
+    title: string;
+    module_number: number;
+  } | null;
+}> {
+  const { data } = await apiClient.post<{
+    message: string;
+    stage: string;
+    next_module?: {
+      content_item_id: string;
+      title: string;
+      module_number: number;
+    } | null;
+  }>('/tutor/module-session/complete', { session_id: sessionId });
   return data;
 }
 
