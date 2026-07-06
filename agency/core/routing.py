@@ -13,7 +13,7 @@ from typing import List, Tuple
 _ROUTES: List[Tuple[re.Pattern[str], str, List[str]]] = [
     (
         re.compile(
-            r"\b(study plan|schedule|deadline|calendar|plan my week|homework|due date|timetable)\b",
+            r"\b(study plan|study session|focused study|schedule|deadline|calendar|plan my week|homework|due date|timetable)\b",
             re.I,
         ),
         "TaskAgent",

@@ -72,7 +72,18 @@ export async function getReviewDue(learnerId: string) {
   return data;
 }
 
-export async function getBktState(learnerId: string, topic: string) {
-  const { data } = await apiClient.get(`/quiz/bkt/${learnerId}/${encodeURIComponent(topic)}`);
+export async function gradeShortAnswer(payload: {
+  question: string;
+  model_answer: string;
+  key_points: string[];
+  student_answer: string;
+  content_item_id: string;
+}) {
+  const { data } = await apiClient.post<{
+    score: number;
+    feedback: string;
+    points_covered?: string[];
+    points_missed?: string[];
+  }>('/quiz/grade-short-answer', payload);
   return data;
 }

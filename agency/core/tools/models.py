@@ -97,6 +97,7 @@ class ContentItem(Base):
     uploaded_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     embedding_status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, default="pending")
+    topics_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     payload_json: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

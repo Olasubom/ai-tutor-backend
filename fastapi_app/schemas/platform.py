@@ -24,6 +24,14 @@ class QuizSubmitRequest(BaseModel):
     content_item_id: Optional[str] = None
 
 
+class GradeShortAnswerRequest(BaseModel):
+    question: str
+    model_answer: str
+    key_points: List[str] = Field(default_factory=list)
+    student_answer: str
+    content_item_id: str
+
+
 class EngagementRequest(BaseModel):
     event_type: str
     metadata: Dict[str, Any] = Field(default_factory=dict)

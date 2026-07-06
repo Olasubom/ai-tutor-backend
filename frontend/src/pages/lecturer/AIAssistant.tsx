@@ -24,12 +24,13 @@ export default function LecturerAIAssistant() {
       id: '0',
       role: 'assistant',
       content:
-        "Hello! I'm your AI teaching assistant. I can help you:\n\n" +
-        '- **Analyse student performance** (e.g. "Who is struggling in CIL 201?")\n' +
-        '- **Generate quiz questions** (e.g. "Create 5 MCQs on Offer and Acceptance")\n' +
-        '- **Suggest interventions** for at-risk students\n' +
-        '- **Answer content questions** about your course materials\n\n' +
-        'What would you like help with?',
+        "Good day. I'm your AI teaching assistant, here to support your work across courses.\n\n" +
+        "I can help you:\n\n" +
+        '- **Review student performance** — e.g. "Who is struggling in CIL 201?"\n' +
+        '- **Draft quiz questions** — e.g. "Create 5 MCQs on Offer and Acceptance"\n' +
+        '- **Recommend interventions** for students flagged at risk\n' +
+        '- **Answer questions** about your uploaded course materials\n\n' +
+        "Select a course above, then let me know what you'd like to work on.",
     },
   ]);
   const [input, setInput] = useState('');

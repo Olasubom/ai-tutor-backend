@@ -129,6 +129,17 @@ export interface QuizQuestion {
   options: Array<{ id: string; text: string; is_correct?: boolean }>;
 }
 
+export interface LecturerDashboardProfile {
+  name: string;
+  department: string;
+  email: string;
+}
+
+export async function getLecturerDashboard(): Promise<LecturerDashboardProfile> {
+  const { data } = await apiClient.get<LecturerDashboardProfile>('/lecturer/dashboard');
+  return data;
+}
+
 export async function listLecturerManagedCourses(): Promise<LecturerManagedCourse[]> {
   const { data } = await apiClient.get<LecturerManagedCourse[]>('/lecturer/courses');
   return data;

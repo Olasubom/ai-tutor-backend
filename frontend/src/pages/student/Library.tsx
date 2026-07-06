@@ -42,6 +42,23 @@ function getMatchPercent(item: Recommendation): number | null {
   return Math.round(pct);
 }
 
+function dedupeRecommendations(items: Recommendation[]): Recommendation[] {
+  const seen = new Map<string, Recommendation>();
+  for (const item of items) {
+    const id = item.item_id;
+    if (!id) continue;
+    const existing = seen.get(id);
+    if (!existing) {
+      seen.set(id, item);
+      continue;
+    }
+    const score = item.score ?? 0;
+    const existingScore = existing.score ?? 0;
+    if (score > existingScore) seen.set(id, item);
+  }
+  return Array.from(seen.values());
+}
+
 export default function Library() {
   const navigate = useNavigate();
   const { learnerId } = useAuth();
@@ -55,9 +72,10 @@ export default function Library() {
     refetchOnWindowFocus: false,
   });
 
-  const items = (data?.recommendations ?? []).filter((item) =>
-    matchesResourceFilter(item.modality, item.source_type, active),
-  );
+  const items = useMemo(() => {
+    const deduped = dedupeRecommendations(data?.recommendations ?? []);
+    return deduped.filter((item) => matchesResourceFilter(item.modality, item.source_type, active));
+  }, [data?.recommendations, active]);
 
   const masteryPercent = useMemo(() => getMasteryPercent(profile.data), [profile.data]);
 

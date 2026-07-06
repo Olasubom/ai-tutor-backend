@@ -234,6 +234,13 @@ export interface ChatMessage {
     label: string;
     onClick: () => void;
   };
+  isComprehensionCheck?: boolean;
+  score?: number;
+  onboardingOptions?: {
+    options: import('@/api/moduleSession').OnboardingOption[];
+    question: string;
+    onboardingStep: string;
+  };
 }
 
 export interface ApiConfig {

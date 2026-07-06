@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -27,6 +29,349 @@ MODULE_EMBEDDINGS_DIR = Path(
 )
 
 PDF_SOURCE_TYPES = {"pdf", "document"}
+
+_ARABIC_RANGE = re.compile(r"[\u0600-\u06FF]")
+
+
+def _topics_json_path(content_item_id: str) -> Path:
+    return MODULE_EMBEDDINGS_DIR / content_item_id / "topics.json"
+
+
+def _call_llm(user_prompt: str, max_tokens: int = 800) -> str:
+    """LLM call for embed-time topic segmentation (mirrors module_session_service pattern)."""
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key or "your_key" in api_key.lower():
+        return ""
+    client = OpenAI(api_key=api_key)
+    model = os.getenv("OPENAI_MODEL", os.getenv("OPENAI_FAST_MODEL", "gpt-4o"))
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "Return valid JSON only when asked."},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.3,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception:
+        logger.exception("module_topic_llm_failed")
+        return ""
+
+
+def _detect_script(text: str) -> str:
+    """Quick check for non-Latin script content to route segmentation strategy."""
+    sample = text[:2000]
+    if not sample:
+        return "latin"
+    arabic_chars = len(_ARABIC_RANGE.findall(sample))
+    if arabic_chars > len(sample) * 0.15:
+        return "arabic"
+    return "latin"
+
+
+def _regex_segment_topics(extracted_text: str) -> List[dict]:
+    """
+    Fast-path heuristic for Western-numbered, Latin-script documents.
+    Splits ONLY on top-level numbered headings (1., 2., 3. — not 1.1, 2.3).
+    Returns [] if fewer than 2 confident topic boundaries.
+    """
+    if not extracted_text or not extracted_text.strip():
+        return []
+
+    normalized = extracted_text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+
+    top_level_heading = re.compile(
+        r"^\s*(\d+)\.\s+([A-Z][A-Za-z0-9 ,&\-/'’]{2,90})\s*$"
+    )
+
+    heading_line_indices: List[int] = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or len(stripped) > 100:
+            continue
+        if top_level_heading.match(stripped):
+            heading_line_indices.append(i)
+
+    topics: List[dict] = []
+    if heading_line_indices:
+        for idx, start in enumerate(heading_line_indices):
+            end = heading_line_indices[idx + 1] if idx + 1 < len(heading_line_indices) else len(lines)
+            title_line = lines[start].strip()
+            content = "\n".join(lines[start + 1 : end]).strip()
+            if content:
+                topics.append({"title": title_line, "content": content})
+
+    return topics
+
+
+def _llm_segment_topics(extracted_text: str, module_title: str, course_title: str) -> List[dict]:
+    """
+    Language-agnostic, format-agnostic topic segmentation.
+    The LLM reads the full document and returns each topic's title AND
+    full content directly — no text-slicing or marker-matching required.
+    Works for any script (Arabic, Latin), any heading convention, any
+    department at Fountain University.
+
+    Runs ONCE at embed time and is cached — no cost during student sessions.
+    """
+    max_chars = 12000
+    text_to_send = extracted_text[:max_chars]
+    truncated = len(extracted_text) > max_chars
+
+    prompt = f"""You are segmenting a university course document into teachable sections.
+The document may be in English, Arabic, or mixed language.
+Headings may be numbered, lettered, bold, or implicit topic shifts with no heading at all.
+
+MODULE: {module_title}
+COURSE: {course_title}
+{"NOTE: document was truncated to first 12000 characters due to length." if truncated else ""}
+
+DOCUMENT:
+{text_to_send}
+
+Task: Divide this document into between 3 and 10 teachable sections.
+Each section should be one coherent topic — not too granular (don't split
+every paragraph), not too broad (don't put everything in one section).
+
+For each section:
+- "title": a short, clear title for what this section covers (can be the
+  original heading, or a concise label you create if there is no heading)
+- "content": the COMPLETE text of this section, copied WORD FOR WORD from
+  the document above — do not paraphrase, summarize, or add anything.
+  Include all sub-headings, case names, examples, and bullet points that
+  belong to this section.
+
+CRITICAL: the "content" fields must together cover the entire document
+with no content skipped or repeated. Every sentence in the document must
+appear in exactly one section's content.
+
+Return ONLY valid JSON — no markdown fences, no preamble:
+{{
+  "topics": [
+    {{"title": "section title", "content": "complete section text verbatim"}}
+  ]
+}}"""
+
+    raw = _call_llm(prompt, max_tokens=4000)
+
+    try:
+        clean = re.sub(r"```json|```", "", raw).strip()
+        parsed = json.loads(clean)
+        topics = parsed.get("topics", [])
+    except Exception as e:
+        logger.warning("[LLM SEGMENT PARSE ERROR] %s", e)
+        return []
+
+    valid = [t for t in topics if t.get("title") and t.get("content", "").strip()]
+
+    if not valid:
+        return []
+
+    if len(valid) > 1:
+        total_len = sum(len(t["content"]) for t in valid)
+        first_len = len(valid[0]["content"])
+        if total_len > 0 and first_len / total_len > 0.70:
+            logger.warning(
+                "[LLM SEGMENT] First topic = %s%% of content — LLM grouping failed, "
+                "will use word-count fallback.",
+                int(first_len / total_len * 100),
+            )
+            return []
+
+    return valid
+
+
+def segment_module_topics(
+    content_item_id: str,
+    extracted_text: str,
+    module_title: str,
+    course_title: str,
+) -> dict:
+    """Hybrid segmentation: regex fast-path, LLM fallback, then word-count chunks."""
+    del content_item_id
+    word_count = len(extracted_text.split())
+    script = _detect_script(extracted_text)
+
+    topics: List[dict] = []
+    method = "regex"
+
+    if script == "latin":
+        topics = _regex_segment_topics(extracted_text)
+
+    if len(topics) < 2 and word_count > 250:
+        llm_topics = _llm_segment_topics(extracted_text, module_title, course_title)
+        if len(llm_topics) >= 2:
+            topics = llm_topics
+            method = "llm"
+
+    if len(topics) < 2 and word_count > 250:
+        words = extracted_text.split()
+        chunk_size = 500
+        topics = [
+            {
+                "title": f"Section {i // chunk_size + 1}",
+                "content": " ".join(words[i : i + chunk_size]),
+            }
+            for i in range(0, len(words), chunk_size)
+        ]
+        method = "wordcount_fallback"
+
+    if not topics and extracted_text.strip():
+        topics = [{"title": module_title, "content": extracted_text.strip()}]
+        method = "single_block_fallback"
+
+    return {
+        "topics": topics,
+        "method": method,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def save_topics(content_item_id: str, payload: dict, db: Optional[Session] = None) -> None:
+    """
+    Saves topic segmentation to PostgreSQL (ContentItem.topics_json).
+    Also writes to disk as a fast local cache for the current deployment.
+    """
+    serialized = json.dumps(payload, ensure_ascii=False)
+
+    try:
+        path = _topics_json_path(content_item_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(serialized, encoding="utf-8")
+    except Exception as exc:
+        logger.warning("[SAVE TOPICS DISK] %s: %s (non-fatal)", content_item_id, exc)
+
+    close_db = False
+    if db is None:
+        from fastapi_app.database import SessionLocal
+
+        db = SessionLocal()
+        close_db = True
+
+    try:
+        record = db.get(ContentItem, content_item_id)
+        if record:
+            record.topics_json = serialized
+            db.commit()
+    except Exception as exc:
+        logger.warning("[SAVE TOPICS DB] %s: %s", content_item_id, exc)
+    finally:
+        if close_db:
+            db.close()
+
+
+def _parse_and_validate_topics(raw_json: str, extracted_text: str = "") -> Optional[List[dict]]:
+    try:
+        data = json.loads(raw_json)
+        topics = data.get("topics", []) if isinstance(data, dict) else data
+        if not isinstance(topics, list) or not topics:
+            return None
+        if extracted_text:
+            word_count = len(extracted_text.split())
+            if len(topics) <= 1 and word_count > 400:
+                logger.info(
+                    "[TOPIC CACHE] cached result has %s topic(s) for %s-word document — invalidated",
+                    len(topics),
+                    word_count,
+                )
+                return None
+        return topics
+    except Exception:
+        return None
+
+
+def load_topics(
+    content_item_id: str,
+    extracted_text: str = "",
+    db: Optional[Session] = None,
+) -> Optional[List[dict]]:
+    """
+    Loads cached topics. Priority:
+    1. Local disk (fast, exists within current deployment)
+    2. PostgreSQL (survives across deployments)
+    Returns None if neither source has valid data (triggers re-segmentation).
+    """
+    disk_path = _topics_json_path(content_item_id)
+    if disk_path.exists():
+        try:
+            result = _parse_and_validate_topics(disk_path.read_text(encoding="utf-8"), extracted_text)
+            if result:
+                return result
+        except Exception:
+            pass
+
+    close_db = False
+    if db is None:
+        from fastapi_app.database import SessionLocal
+
+        db = SessionLocal()
+        close_db = True
+
+    try:
+        record = db.get(ContentItem, content_item_id)
+        if record and record.topics_json:
+            result = _parse_and_validate_topics(record.topics_json, extracted_text)
+            if result:
+                try:
+                    disk_path.parent.mkdir(parents=True, exist_ok=True)
+                    disk_path.write_text(record.topics_json, encoding="utf-8")
+                except Exception:
+                    pass
+                return result
+    except Exception as exc:
+        logger.warning("[LOAD TOPICS DB] %s: %s", content_item_id, exc)
+    finally:
+        if close_db:
+            db.close()
+
+    return None
+
+
+def _faiss_index_path(content_item_id: str) -> Path:
+    return MODULE_EMBEDDINGS_DIR / content_item_id / f"{content_item_id}.faiss"
+
+
+def _rebuild_faiss_from_text(content_item_id: str, extracted_text: str) -> None:
+    """
+    Rebuilds FAISS index from already-extracted text.
+    Used after a deployment clears the ephemeral disk.
+    Does NOT re-call pypdf — uses text already stored in PostgreSQL.
+    """
+    if not extracted_text.strip():
+        return
+    embed_content_item(content_item_id, extracted_text)
+    logger.info(
+        "[REBUILD] %s: FAISS rebuilt from stored extracted_text",
+        content_item_id,
+    )
+
+
+def _segment_and_cache_topics(
+    content_item_id: str,
+    extracted_text: str,
+    module_title: str,
+    course_title: str,
+    db: Optional[Session] = None,
+) -> None:
+    payload = segment_module_topics(
+        content_item_id=content_item_id,
+        extracted_text=extracted_text,
+        module_title=module_title,
+        course_title=course_title,
+    )
+    save_topics(content_item_id, payload, db=db)
+    logger.info(
+        "module_topics_segmented",
+        extra={
+            "content_item_id": content_item_id,
+            "topic_count": len(payload.get("topics", [])),
+            "method": payload.get("method"),
+        },
+    )
+
 
 
 def extract_pdf_text(file_path: str) -> str:
@@ -184,6 +529,8 @@ def retrieve_relevant_chunks(content_item_id: str, query: str, top_k: int = 4) -
         item = session.get(ContentItem, content_item_id)
         if item is None or (item.embedding_status or "") != "embedded":
             return []
+        if not _faiss_index_path(content_item_id).exists() and item.extracted_text:
+            _rebuild_faiss_from_text(content_item_id, item.extracted_text)
     store = ModuleContentVectorStore(content_item_id)
     return store.search(query, top_k=top_k)
 
@@ -196,9 +543,15 @@ def _resolve_file_path(content_item: ContentItem) -> Optional[str]:
         upload_id = item_id.replace("upload_", "", 1)
         record = upload_service.get_material(upload_id)
         if record:
-            return record.get("file_path")
+            return upload_service.resolve_material_file_path(record)
     payload = dict(content_item.payload_json or {})
-    return payload.get("file_path")
+    local = payload.get("file_path")
+    if local and Path(local).exists():
+        return local
+    r2_key = payload.get("r2_key")
+    if r2_key:
+        return upload_service.resolve_r2_key_to_local(r2_key, item_id)
+    return local
 
 
 def _update_content_item_embedding(
@@ -240,6 +593,9 @@ def embed_content_item(content_item_id: str, text: str) -> None:
 def process_content_item_embeddings(content_item_id: str) -> None:
     """Extract PDF text (if applicable) and embed for RAG."""
     db = Database()
+    extracted = ""
+    module_title = ""
+    course_title = ""
     with db._SessionLocal() as session:  # noqa: SLF001
         item = session.get(ContentItem, content_item_id)
         if item is None:
@@ -250,22 +606,50 @@ def process_content_item_embeddings(content_item_id: str) -> None:
             session.commit()
             return
 
-        if item.extracted_text and item.embedding_status == "embedded":
+        if item.extracted_text and (item.embedding_status or "") == "embedded":
+            if _faiss_index_path(content_item_id).exists():
+                return
+            _rebuild_faiss_from_text(content_item_id, item.extracted_text)
             return
 
         file_path = _resolve_file_path(item)
-        if not file_path or not Path(file_path).exists():
+        if file_path and Path(file_path).exists():
+            extracted = extract_pdf_text(file_path)
+        elif item.extracted_text:
+            extracted = item.extracted_text
+        else:
             item.embedding_status = "failed"
             session.commit()
             return
 
-        extracted = extract_pdf_text(file_path)
+        module_title = item.title or ""
+        if item.course_id:
+            from fastapi_app.admin.models import Course
+
+            course = session.get(Course, item.course_id)
+            if course:
+                course_title = course.course_title or ""
+
         item.extracted_text = extracted or None
         item.embedding_status = "pending"
         session.commit()
 
     if extracted:
         embed_content_item(content_item_id, extracted)
+        try:
+            with db._SessionLocal() as session:  # noqa: SLF001
+                _segment_and_cache_topics(
+                    content_item_id,
+                    extracted,
+                    module_title,
+                    course_title,
+                    db=session,
+                )
+        except Exception:
+            logger.exception(
+                "module_topic_segmentation_failed",
+                extra={"content_item_id": content_item_id},
+            )
     else:
         _update_content_item_embedding(content_item_id, embedding_status="failed")
 

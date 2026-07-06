@@ -49,7 +49,7 @@ async def upload_material(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    upload_id, file_path, safe_filename = upload_service.save_material_file(contents, file.filename or "file")
+    upload_id, file_path, safe_filename, r2_key = upload_service.save_material_file(contents, file.filename or "file")
     status = "approved" if user.role == "admin" else "pending_review"
     record = upload_service.create_material_record(
         upload_id=upload_id,
@@ -69,6 +69,7 @@ async def upload_material(
         department=user.department,
         status=status,
         file_path=file_path,
+        r2_key=r2_key,
     )
     upload_service.append_material(record)
 
@@ -104,9 +105,9 @@ async def download_material(
         raise HTTPException(status_code=404, detail="Material not found")
     if record.get("status") != "approved" and record.get("uploaded_by") != current["user_id"] and current.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Not authorized to download this material")
-    file_path = record.get("file_path")
-    if not file_path or not __import__("os").path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
+    file_path = upload_service.resolve_material_file_path(record)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path=file_path, filename=record.get("original_name") or "download")
 
 

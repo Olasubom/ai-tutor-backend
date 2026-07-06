@@ -25,5 +25,59 @@
     "is_read": true,
     "created_at": "2026-06-17T14:52:49.279381+00:00",
     "action_url": "/student/notifications"
+  },
+  {
+    "notification_id": "f83cefcc-df03-42ba-a964-6313803b044c",
+    "type": "new_resource",
+    "title": "New resources ready",
+    "body": "Recommendations updated after your CIL201 Module2 Offer and Acceptance quiz.",
+    "is_read": true,
+    "created_at": "2026-06-20T19:33:45.879557+00:00",
+    "action_url": "/student/library"
+  },
+  {
+    "notification_id": "8e7920db-3670-4f56-9c94-73f4f5a528c0",
+    "type": "grade_posted",
+    "title": "Grade posted for CIL 201",
+    "body": "Your grade: F (0.0%)",
+    "is_read": true,
+    "created_at": "2026-06-25T16:18:36.659841+00:00",
+    "action_url": "/student/notifications"
+  },
+  {
+    "notification_id": "9170fe40-cc3e-495b-abe4-db530cd8d467",
+    "type": "grade_posted",
+    "title": "Grade posted for CIL 201",
+    "body": "Your grade: C (50.0%)",
+    "is_read": true,
+    "created_at": "2026-06-25T16:19:01.937139+00:00",
+    "action_url": "/student/notifications"
+  },
+  {
+    "notification_id": "3af0cd39-2637-49a0-a7d6-174099e338a9",
+    "type": "grade_posted",
+    "title": "Grade posted for CIL 201",
+    "body": "Your grade: E (40.0%)",
+    "is_read": true,
+    "created_at": "2026-06-25T16:19:26.064040+00:00",
+    "action_url": "/student/notifications"
+  },
+  {
+    "notification_id": "1f7087f8-2e56-448e-bbdd-fee780e5c1f3",
+    "type": "task_due",
+    "title": "Task due soon",
+    "body": "Review Citizenship, Peace and Conflict Resolution",
+    "is_read": false,
+    "created_at": "2026-07-06T15:12:10.659208+00:00",
+    "action_url": "/student/tasks"
+  },
+  {
+    "notification_id": "2423d425-6622-4f30-9839-a2ae27808808",
+    "type": "task_due",
+    "title": "Task due soon",
+    "body": "Review Citizenship, Peace and Conflict Resolution",
+    "is_read": false,
+    "created_at": "2026-07-06T15:12:18.616564+00:00",
+    "action_url": "/student/tasks"
   }
 ]

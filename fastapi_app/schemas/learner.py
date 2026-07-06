@@ -140,6 +140,7 @@ class StartModuleSessionRequest(BaseModel):
 class ContinueModuleSessionRequest(BaseModel):
     session_id: str
     message: Optional[str] = None
+    selected_option_id: Optional[str] = None
 
 
 class CompleteModuleSessionRequest(BaseModel):

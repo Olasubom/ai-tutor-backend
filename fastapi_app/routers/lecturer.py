@@ -108,6 +108,25 @@ def lecturer_students(lecturer_id: str, _: None = Depends(require_api_key)):
     return enriched
 
 
+def _lecturer_display_name(user: User, current: dict) -> str:
+    """Resolve lecturer display name from DB user record and JWT fallbacks."""
+    name = (
+        (user.name or "").strip()
+        or (current.get("name") or "").strip()
+        or " ".join(
+            filter(
+                None,
+                [
+                    getattr(user, "first_name", None),
+                    getattr(user, "last_name", None),
+                ],
+            )
+        ).strip()
+        or (user.email or "Lecturer").split("@")[0]
+    )
+    return name
+
+
 @router.get("/dashboard")
 def lecturer_dashboard(
     db: Session = Depends(get_db),
@@ -115,7 +134,7 @@ def lecturer_dashboard(
 ) -> dict:
     user = _user(db, current)
     return {
-        "name": user.name,
+        "name": _lecturer_display_name(user, current),
         "department": user.department or "",
         "email": user.email,
     }

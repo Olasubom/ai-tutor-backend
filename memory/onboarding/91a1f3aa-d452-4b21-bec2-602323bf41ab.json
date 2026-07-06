@@ -1,0 +1,16 @@
+{
+  "completed_steps": [
+    4
+  ],
+  "data": {
+    "step4": {
+      "weekly_hours": 23,
+      "content_formats": [
+        "video",
+        "interactive",
+        "mixed"
+      ],
+      "primary_objective": "Academic Excellence"
+    }
+  }
+}

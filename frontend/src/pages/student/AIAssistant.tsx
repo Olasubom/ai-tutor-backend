@@ -15,7 +15,7 @@ import type { ChatMessage, Recommendation } from '@/types';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import { formatAssistantMessage, looksLikeRawJsonStream } from '@/utils/formatAssistantMessage';
-import type { ModuleSessionStage } from '@/api/moduleSession';
+import type { ModuleSessionStage, MixedQuizData, OnboardingOption, ContinueModuleSessionResponse } from '@/api/moduleSession';
 
 const STAGE_LABELS: { id: ModuleSessionStage; label: string }[] = [
   { id: 'onboarding', label: 'Intro' },
@@ -88,9 +88,45 @@ interface LocationModuleSession {
   contentItemId: string;
   courseId?: string;
   initialMessage?: string;
+  initialOnboarding?: {
+    options: OnboardingOption[];
+    question?: string;
+    onboardingStep?: string;
+  };
+  awaitingCustomText?: boolean;
   tasks?: Recommendation[];
   redirectToQuiz?: boolean;
   quizTopic?: string;
+}
+
+function onboardingOptionsFromResponse(res: {
+  options?: OnboardingOption[];
+  question?: string;
+  onboarding_step?: string;
+}) {
+  if (!res.options?.length) return undefined;
+  return {
+    options: res.options,
+    question: res.question ?? '',
+    onboardingStep: res.onboarding_step ?? 'style',
+  };
+}
+
+function assistantMessageFromModuleResponse(
+  res: ContinueModuleSessionResponse,
+  extra?: Partial<ChatMessage>,
+): ChatMessage {
+  return {
+    id: `a_${Date.now()}`,
+    role: 'assistant',
+    content: res.message,
+    timestamp: new Date().toISOString(),
+    tasks: res.tasks,
+    isComprehensionCheck: res.is_comprehension_check,
+    score: res.score,
+    onboardingOptions: onboardingOptionsFromResponse(res),
+    ...extra,
+  };
 }
 
 const SUGGESTION_GROUPS = [
@@ -173,7 +209,9 @@ export default function AIAssistant() {
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
   const [moduleSession, setModuleSession] = useState<LocationModuleSession | null>(null);
   const [moduleStage, setModuleStage] = useState<ModuleSessionStage>('explanation');
+  const [explainProgress, setExplainProgress] = useState<{ current: number; total: number } | null>(null);
   const [moduleSending, setModuleSending] = useState(false);
+  const [awaitingCustomText, setAwaitingCustomText] = useState(false);
   const moduleInitRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -204,16 +242,27 @@ export default function AIAssistant() {
       setModuleSession(ms);
       setModuleStage(ms.stage);
       setSuggestionsOpen(false);
-      if (ms.initialMessage) {
+      if (ms.initialMessage || ms.initialOnboarding) {
         setMessages([
           {
             id: `module_init_${Date.now()}`,
             role: 'assistant',
-            content: ms.initialMessage,
+            content: ms.initialMessage ?? '',
             timestamp: new Date().toISOString(),
             tasks: ms.tasks,
+            onboardingOptions: ms.initialOnboarding
+              ? {
+                  options: ms.initialOnboarding.options,
+                  question: ms.initialOnboarding.question ?? '',
+                  onboardingStep: ms.initialOnboarding.onboardingStep ?? 'style',
+                }
+              : undefined,
           },
         ]);
+      }
+      setAwaitingCustomText(Boolean(ms.awaitingCustomText));
+      if (ms.stage === 'explanation') {
+        setExplainProgress({ current: 1, total: 1 });
       }
       return;
     }
@@ -255,6 +304,78 @@ export default function AIAssistant() {
 
   const activeSuggestions = SUGGESTION_GROUPS.find((g) => g.id === activeGroup) ?? SUGGESTION_GROUPS[0];
   const showSuggestions = messages.length === 0 && !isStreaming && suggestionsOpen;
+  const lastMsg = messages[messages.length - 1];
+  const showingPendingOptions = Boolean(lastMsg?.onboardingOptions && !awaitingCustomText);
+
+  const handleOnboardingSelect = async (option: OnboardingOption) => {
+    if (moduleSending || !moduleSession) return;
+
+    setMessages((m) => [
+      ...m,
+      {
+        id: `u_${Date.now()}`,
+        role: 'user',
+        content: option.label,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+    setSuggestionsOpen(false);
+
+    if (option.id === 'custom') {
+      setAwaitingCustomText(true);
+      setMessages((m) => [
+        ...m,
+        {
+          id: `a_${Date.now()}`,
+          role: 'assistant',
+          content: "Sure — describe how you like to learn and I'll adapt to it.",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
+
+    setModuleSending(true);
+    try {
+      const res = await continueModuleSession(moduleSession.sessionId, '', option.id);
+      setModuleStage(res.stage);
+      setAwaitingCustomText(Boolean(res.awaiting_custom_text));
+
+      if (res.redirect_to_quiz && res.topic) {
+        const topic = res.topic;
+        const sessionId = moduleSession.sessionId;
+        const quizData = res.quiz_data as MixedQuizData | undefined;
+        setMessages((m) => [
+          ...m,
+          {
+            ...assistantMessageFromModuleResponse(res),
+            action: {
+              label: 'Start Quiz',
+              onClick: () =>
+                navigate(`/student/quiz/${encodeURIComponent(topic)}`, {
+                  state: {
+                    moduleSessionId: sessionId,
+                    contentItemId: moduleSession.contentItemId,
+                    quizData,
+                    quizId: res.quiz_id,
+                  },
+                }),
+            },
+          },
+        ]);
+        return;
+      }
+
+      setMessages((m) => [...m, assistantMessageFromModuleResponse(res)]);
+      if (res.explanation_progress !== undefined && res.total_topics) {
+        setExplainProgress({ current: res.explanation_progress, total: res.total_topics });
+      }
+    } catch {
+      toast('Could not continue module session', 'error');
+    } finally {
+      setModuleSending(false);
+    }
+  };
 
   const sendModuleMessage = async (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
@@ -274,22 +395,30 @@ export default function AIAssistant() {
     try {
       const res = await continueModuleSession(moduleSession.sessionId, text);
       setModuleStage(res.stage);
+      setAwaitingCustomText(Boolean(res.awaiting_custom_text));
+
+      if (res.explanation_progress !== undefined && res.total_topics) {
+        setExplainProgress({ current: res.explanation_progress, total: res.total_topics });
+      }
 
       if (res.redirect_to_quiz && res.topic) {
         const topic = res.topic;
         const sessionId = moduleSession.sessionId;
+        const quizData = res.quiz_data as MixedQuizData | undefined;
         setMessages((m) => [
           ...m,
           {
-            id: `a_${Date.now()}`,
-            role: 'assistant',
-            content: res.message,
-            timestamp: new Date().toISOString(),
+            ...assistantMessageFromModuleResponse(res),
             action: {
               label: 'Start Quiz',
               onClick: () =>
                 navigate(`/student/quiz/${encodeURIComponent(topic)}`, {
-                  state: { moduleSessionId: sessionId, contentItemId: moduleSession.contentItemId },
+                  state: {
+                    moduleSessionId: sessionId,
+                    contentItemId: moduleSession.contentItemId,
+                    quizData,
+                    quizId: res.quiz_id,
+                  },
                 }),
             },
           },
@@ -297,16 +426,7 @@ export default function AIAssistant() {
         return;
       }
 
-      setMessages((m) => [
-        ...m,
-        {
-          id: `a_${Date.now()}`,
-          role: 'assistant',
-          content: res.message,
-          timestamp: new Date().toISOString(),
-          tasks: res.tasks,
-        },
-      ]);
+      setMessages((m) => [...m, assistantMessageFromModuleResponse(res)]);
     } catch {
       toast('Could not continue module session', 'error');
     } finally {
@@ -363,15 +483,17 @@ export default function AIAssistant() {
       );
     };
 
+    let streamedRaw = '';
+
     try {
       await streamChatMessage(payload, {
         onDelta: (chunk) => {
-          setMessages((m) =>
-            m.map((msg) => (msg.id === assistantId ? { ...msg, content: msg.content + chunk } : msg)),
-          );
+          // Raw agent tokens (often interleaved JSON + prose) are buffered server-side only.
+          streamedRaw += chunk;
         },
         onDone: (fullResponse, sid) => {
-          applyAssistant(fullResponse, undefined, sid);
+          const finalText = fullResponse?.trim() || streamedRaw;
+          applyAssistant(finalText, undefined, sid);
           sessions.refetch();
         },
         onError: (message) => toast(message, 'error'),
@@ -436,6 +558,20 @@ export default function AIAssistant() {
             <StageProgressPills stage={moduleStage} />
           </div>
         )}
+        {moduleSession && moduleStage === 'explanation' && explainProgress && (
+          <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-1 text-xs text-text-secondary">
+            <span>
+              Topic {explainProgress.current} of {explainProgress.total}
+            </span>
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-border">
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${(explainProgress.current / explainProgress.total) * 100}%` }}
+              />
+            </div>
+            <span>{Math.round((explainProgress.current / explainProgress.total) * 100)}%</span>
+          </div>
+        )}
         <div className="flex items-center justify-between border-b border-border bg-header px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary to-teal text-white">
@@ -481,16 +617,56 @@ export default function AIAssistant() {
               <div className={`max-w-2xl ${msg.role === 'user' ? 'text-right' : ''}`}>
                 <div className="label-caps mb-1 text-text-muted">{msg.role === 'user' ? 'You' : 'AI Tutor'}</div>
                 <div
-                  className={
+                  className={cn(
                     msg.role === 'user'
                       ? 'rounded-xl rounded-tr-sm bg-primary px-4 py-3 text-left text-[14px] text-white'
-                      : 'rounded-xl rounded-tl-sm border border-border bg-card px-4 py-3 text-[14px] leading-6'
-                  }
+                      : 'rounded-xl rounded-tl-sm border border-border bg-card px-4 py-3 text-[14px] leading-6',
+                    msg.role === 'assistant' && msg.isComprehensionCheck && 'border-amber-200 bg-amber-50/50',
+                  )}
                 >
                   {msg.role === 'assistant' ? (
                     <>
-                      <AiMarkdown content={msg.content} isStreaming={streamingAssistantId === msg.id} />
+                      {streamingAssistantId === msg.id && !msg.content.trim() ? (
+                        <p className="animate-pulse text-text-muted">Preparing your response…</p>
+                      ) : (
+                        <AiMarkdown content={msg.content} isStreaming={streamingAssistantId === msg.id} />
+                      )}
+                      {msg.score !== undefined && (
+                        <div
+                          className={cn(
+                            'mt-2 inline-block rounded px-2 py-1 text-xs font-medium',
+                            msg.score >= 70
+                              ? 'bg-green-100 text-green-800'
+                              : msg.score >= 50
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-red-100 text-red-800',
+                          )}
+                        >
+                          Score: {msg.score}/100
+                        </div>
+                      )}
                       {msg.tasks && msg.tasks.length > 0 && <TaskCards tasks={msg.tasks} />}
+                      {msg.onboardingOptions && (
+                        <div className="mt-3 space-y-2">
+                          {msg.onboardingOptions.question && (
+                            <p className="mb-2 text-sm font-medium">{msg.onboardingOptions.question}</p>
+                          )}
+                          {msg.onboardingOptions.options.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              disabled={moduleSending || !showingPendingOptions || msg.id !== lastMsg?.id}
+                              onClick={() => handleOnboardingSelect(opt)}
+                              className="w-full rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-default disabled:opacity-60"
+                            >
+                              <p className="text-sm font-medium">{opt.label}</p>
+                              {opt.description && (
+                                <p className="mt-0.5 text-xs text-text-secondary">{opt.description}</p>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {msg.action && (
                         <Button className="mt-3" onClick={msg.action.onClick}>
                           {msg.action.label}
@@ -563,14 +739,27 @@ export default function AIAssistant() {
             <button type="button" className="hidden rounded-lg p-2 text-text-muted hover:bg-card-hover md:block">
               <Paperclip className="h-5 w-5" />
             </button>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-              placeholder={moduleSession ? 'Continue this module…' : 'Message AI Tutor...'}
-              className="flex-1 rounded-xl border border-border bg-input px-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <Button onClick={() => send()} disabled={isStreaming || moduleSending} className="rounded-full px-3">
+            {moduleSession && showingPendingOptions ? (
+              <p className="flex-1 py-3 text-center text-xs text-text-secondary">
+                Select an option above to continue
+              </p>
+            ) : (
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
+                placeholder={
+                  moduleSession
+                    ? awaitingCustomText
+                      ? 'Describe how you like to learn...'
+                      : 'Continue this module…'
+                    : 'Message AI Tutor...'
+                }
+                disabled={moduleSending}
+                className="flex-1 rounded-xl border border-border bg-input px-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              />
+            )}
+            <Button onClick={() => send()} disabled={isStreaming || moduleSending || showingPendingOptions} className="rounded-full px-3">
               <Send className="h-4 w-4" />
             </Button>
           </div>

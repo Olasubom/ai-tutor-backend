@@ -23,10 +23,12 @@ import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import type { UniversityCourse } from '@/types';
 
-function uiStatus(step: CurriculumModule): 'COMPLETED' | 'IN PROGRESS' | 'LOCKED' {
-  if (step.status === 'completed') return 'COMPLETED';
+function uiStatus(step: CurriculumModule): 'COMPLETED' | 'IN PROGRESS' | 'LOCKED' | 'NOT STARTED' {
   if (step.status === 'locked') return 'LOCKED';
-  return 'IN PROGRESS';
+  const pct = step.percent_complete ?? 0;
+  if (pct >= 90) return 'COMPLETED';
+  if (pct > 0 || step.status === 'in_progress') return 'IN PROGRESS';
+  return 'NOT STARTED';
 }
 
 export default function Curriculum() {
@@ -109,6 +111,14 @@ export default function Curriculum() {
             contentItemId,
             courseId: activeCourse?.id,
             initialMessage: res.message,
+            initialOnboarding: res.options?.length
+              ? {
+                  options: res.options,
+                  question: res.question,
+                  onboardingStep: res.onboarding_step,
+                }
+              : undefined,
+            awaitingCustomText: res.awaiting_custom_text,
             tasks: res.tasks,
             redirectToQuiz: res.redirect_to_quiz,
             quizTopic: res.topic,
@@ -330,6 +340,28 @@ export default function Curriculum() {
                           </button>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {status === 'NOT STARTED' && (
+                    <div className="mt-4">
+                      <Button
+                        disabled={continueLoading === contentItemId}
+                        onClick={() => handleContinue(step)}
+                      >
+                        {continueLoading === contentItemId ? 'Starting…' : 'Start Module →'}
+                      </Button>
+                    </div>
+                  )}
+
+                  {status === 'NOT STARTED' && (
+                    <div className="mt-4">
+                      <Button
+                        disabled={continueLoading === contentItemId}
+                        onClick={() => handleContinue(step)}
+                      >
+                        {continueLoading === contentItemId ? 'Starting…' : 'Start Module →'}
+                      </Button>
                     </div>
                   )}
 

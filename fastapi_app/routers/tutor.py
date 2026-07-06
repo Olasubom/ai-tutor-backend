@@ -61,6 +61,7 @@ from fastapi_app.services.module_progress_service import upsert_module_progress
 from fastapi_app.services.module_session_service import (
     complete_session,
     continue_session,
+    get_weekly_study_stats,
     start_or_resume_session,
 )
 from agency.core.tools.models import ContentItem, ModuleSession
@@ -360,6 +361,7 @@ def continue_module_session(
             session=session,
             content_item=content_item,
             message=payload.message,
+            selected_option_id=payload.selected_option_id,
             db=db,
         )
     except Exception as exc:
@@ -382,6 +384,13 @@ def complete_module_session(
     except Exception as exc:
         logger.exception("module_session_complete_failed", extra={"session_id": payload.session_id})
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/study-stats")
+def get_study_stats(auth: AuthContext = Depends(get_auth_context)) -> dict:
+    """Weekly study hours vs goal from learner memory."""
+    learner_id = resolve_learner_id(auth, "")
+    return get_weekly_study_stats(learner_id)
 
 
 @router.get("/health")

@@ -165,6 +165,61 @@ def _looks_like_resource_list(text: str) -> bool:
     return numbered >= 2
 
 
+def _coerce_reasons(rec: Dict[str, Any]) -> List[str]:
+    """Normalize reasons — LLM/tool output may use a string instead of a list."""
+    raw = rec.get("reasons")
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if x and str(x).strip()]
+    if isinstance(raw, str) and raw.strip():
+        return [raw.strip()]
+    single = rec.get("reason")
+    if isinstance(single, str) and single.strip():
+        return [single.strip()]
+    return []
+
+
+def _clean_prose_lines(text: str) -> str:
+    """Drop JSON syntax lines from a salvaged markdown section."""
+    keep: List[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            keep.append("")
+            continue
+        if stripped.startswith(("{", "}", "[", "]", "```")):
+            continue
+        if re.match(r'^"[^"]+"\s*:', stripped):
+            continue
+        if '":' in stripped and stripped.count('"') >= 2:
+            continue
+        keep.append(line)
+    return "\n".join(keep).strip()
+
+
+def _salvage_prose_sections(text: str) -> str:
+    """Extract readable markdown when agent output mixes invalid JSON with prose."""
+    markers = (
+        "### Study Plan",
+        "### Study Session",
+        "### Tasks",
+        "**Study recommendations**",
+        "**Your knowledge snapshot**",
+    )
+    sections: List[str] = []
+    for marker in markers:
+        idx = text.find(marker)
+        if idx == -1:
+            continue
+        chunk = text[idx:]
+        fence = chunk.find("```")
+        if fence != -1:
+            chunk = chunk[:fence]
+        cleaned = _clean_prose_lines(chunk.strip())
+        if cleaned and cleaned not in sections:
+            sections.append(cleaned)
+    return "\n\n".join(sections)
+
+
 def _format_structured_payload(data: Any) -> str:
     if not isinstance(data, dict):
         return ""
@@ -199,7 +254,7 @@ def _format_structured_payload(data: Any) -> str:
             title = rec.get("title") or rec.get("topic") or "Resource"
             duration = rec.get("duration_minutes") or rec.get("estimated_minutes")
             modality = rec.get("modality") or rec.get("source_type") or ""
-            reasons = rec.get("reasons") or ([rec.get("reason")] if rec.get("reason") else [])
+            reasons = _coerce_reasons(rec)
             meta = [str(modality).replace("_", " ").title()] if modality else []
             if duration:
                 meta.append(f"{duration} min")
@@ -207,9 +262,45 @@ def _format_structured_payload(data: Any) -> str:
             if meta:
                 line += f" ({', '.join(meta)})"
             parts.append(line)
-            reason = next((str(r) for r in reasons if r), None)
-            if reason:
-                parts.append(f"   - {reason}")
+            if reasons:
+                parts.append(f"   - {' · '.join(reasons)}")
+
+    study_plan = data.get("study_plan")
+    if isinstance(study_plan, dict):
+        sessions = study_plan.get("sessions") or []
+        if sessions:
+            parts.append("### Study Plan")
+            total = study_plan.get("total_minutes")
+            if total:
+                parts.append(f"- **Total time:** {total} minutes")
+            for sess in sessions:
+                if not isinstance(sess, dict):
+                    continue
+                title = sess.get("title") or f"Session {sess.get('session', '')}"
+                dur = sess.get("duration_minutes")
+                objective = sess.get("objective") or ""
+                line = f"- **{title}**"
+                if dur:
+                    line += f" ({dur} min)"
+                parts.append(line)
+                if objective:
+                    parts.append(f"  - {objective}")
+
+    tasks = data.get("tasks")
+    if isinstance(tasks, list) and tasks:
+        parts.append("### Tasks")
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            title = task.get("title") or "Task"
+            due = task.get("due_date") or ""
+            priority = task.get("priority") or ""
+            est = task.get("estimated_minutes") or task.get("estimated_duration")
+            meta = [m for m in [priority, f"due {due}" if due else None, f"{est} min" if est else None] if m]
+            line = f"- **{title}**"
+            if meta:
+                line += f" ({', '.join(meta)})"
+            parts.append(line)
 
     error = data.get("error")
     if error:
@@ -253,6 +344,10 @@ def humanize_assistant_message(text: str) -> str:
         if remainder and not _looks_like_resource_list(remainder):
             return f"{remainder}\n\n{combined}".strip()
         return combined
+
+    salvaged = _salvage_prose_sections(stripped)
+    if salvaged:
+        return salvaged
 
     if remainder:
         prose_parts.append(remainder)
@@ -489,41 +584,61 @@ async def handle_tutor_request_stream(
                 "Never output raw JSON or ``` code fences — translate specialist tool results into short paragraphs and numbered lists."
             ),
         )
+        # Buffer all agent tokens server-side — do NOT stream raw JSON/prose to the client.
         async for event in stream:
             delta = _extract_text_delta(event)
             if delta:
                 parts.append(delta)
-                yield {"type": "delta", "content": delta}
 
         try:
             result = await stream.wait_final_result()
             if result is not None:
                 final_text = _extract_final_output(result).strip()
                 if final_text and not parts:
-                    assistant_message = final_text
-                    yield {"type": "delta", "content": final_text}
+                    parts.append(final_text)
         except Exception:
             logger.exception("tutor_stream_final_result_failed", extra={"request_id": request_id})
 
-        assistant_message = assistant_message or "".join(parts)
-        assistant_message = humanize_assistant_message(assistant_message)
+        assistant_message = humanize_assistant_message("".join(parts))
     except Exception:
         logger.exception("tutor_stream_failed", extra={"request_id": request_id})
         assistant_message = (
             "I'm having trouble reaching the tutoring agents right now. "
             "Please verify your OpenAI API key and try again."
         )
-        yield {"type": "delta", "content": assistant_message}
 
     if not assistant_message.strip():
         assistant_message = (
             "I processed your request but could not generate a visible reply. Please try again."
         )
-        yield {"type": "delta", "content": assistant_message}
 
     runtime.learner_memory.append_turn(learner_id, "assistant", assistant_message)
     payload = _build_response(request_id, learner_id, assistant_message, runtime)
     yield {"type": "done", **payload}
+
+
+def _dedupe_recommendations(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep one entry per content item, preferring the highest score."""
+    seen: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        item_id = str(item.get("item_id") or item.get("id") or item.get("content_item_id") or "")
+        if not item_id:
+            continue
+        score = float(item.get("match_score", item.get("score", 0)) or 0)
+        existing = seen.get(item_id)
+        if existing is None:
+            seen[item_id] = item
+            continue
+        existing_score = float(existing.get("match_score", existing.get("score", 0)) or 0)
+        if score > existing_score:
+            seen[item_id] = item
+    return list(seen.values())
+
+
+def _dedupe_catalog(catalog: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Remove duplicate catalog entries before scoring."""
+    deduped = _dedupe_recommendations(catalog)
+    return deduped if deduped else catalog
 
 
 def handle_recommend_request(
@@ -617,6 +732,7 @@ def handle_recommend_request(
     from fastapi_app.services.content_relevance import filter_content_by_enrolled_courses
 
     catalog = [_normalize_catalog_item_types(item) for item in runtime.catalog]
+    catalog = _dedupe_catalog(catalog)
     if enrolled_courses:
         relevant_catalog = filter_content_by_enrolled_courses(catalog, enrolled_courses)
         if not relevant_catalog:
@@ -678,6 +794,9 @@ def handle_recommend_request(
         }
         for r in ranked
     ]
+    recommendations = _dedupe_recommendations(recommendations)
+    recommendations.sort(key=lambda x: float(x.get("score", 0)), reverse=True)
+    recommendations = recommendations[:limit]
     payload = {"recommendations": recommendations, "adaptive_path": adaptive_path}
     runtime.learner_memory.upsert_profile(learner_id, {"last_recommendations": payload})
 

@@ -87,11 +87,20 @@ def update_announcement(db: Session, user: User, announcement_id: str, patch: di
 
 
 def delete_announcement(db: Session, user: User, announcement_id: str) -> None:
+    from fastapi_app.models.lecturer_dashboard import UserNotification
+
     row = db.get(Announcement, announcement_id)
     if not row:
         raise ValueError("Announcement not found")
     course = db.get(Course, row.course_id)
     assert course is not None
     assert_lecturer_owns_course(db, user, course)
+
+    linked = db.scalars(
+        select(UserNotification).where(UserNotification.announcement_id == announcement_id)
+    ).all()
+    for notification in linked:
+        db.delete(notification)
+
     db.delete(row)
     db.commit()

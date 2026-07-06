@@ -6,12 +6,33 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
-import { generateQuiz, submitQuiz, type QuizGenerateResponse, type QuizSubmitResponse } from '@/api/quiz';
+import {
+  generateQuiz,
+  submitQuiz,
+  gradeShortAnswer,
+  type QuizGenerateResponse,
+  type QuizSubmitResponse,
+} from '@/api/quiz';
 import { completeModuleSession } from '@/api/moduleSession';
+import type { MixedQuizData } from '@/api/moduleSession';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 
-type Step = 'start' | 'question' | 'review' | 'results';
+type Step = 'start' | 'question' | 'short_answer' | 'review' | 'results';
+
+interface ShortAnswerResult {
+  question_id: string;
+  score: number;
+  feedback: string;
+  points_missed?: string[];
+}
+
+interface LocationQuizState {
+  moduleSessionId?: string;
+  contentItemId?: string;
+  quizData?: MixedQuizData;
+  quizId?: string;
+}
 
 function extractErrorMessage(err: unknown, fallback: string): string {
   if (axios.isAxiosError(err)) {
@@ -32,9 +53,13 @@ export default function Quiz() {
   const [searchParams] = useSearchParams();
   const contentItemId = searchParams.get('content_item_id') ?? undefined;
   const location = useLocation();
-  const moduleSessionId = (location.state as { moduleSessionId?: string } | null)?.moduleSessionId;
-  const moduleContentItemId =
-    (location.state as { contentItemId?: string } | null)?.contentItemId ?? contentItemId;
+  const locState = (location.state as LocationQuizState | null) ?? {};
+  const moduleSessionId = locState.moduleSessionId;
+  const moduleContentItemId = locState.contentItemId ?? contentItemId;
+  const mixedQuiz = locState.quizData;
+  const moduleQuizId = locState.quizId;
+  const isMixedModuleQuiz = Boolean(mixedQuiz?.mcq?.length);
+
   const decodedTopic = decodeURIComponent(topic);
   const { learnerId } = useAuth();
   const navigate = useNavigate();
@@ -48,6 +73,9 @@ export default function Quiz() {
   const [quiz, setQuiz] = useState<QuizGenerateResponse | null>(null);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [shortAnswers, setShortAnswers] = useState<Record<string, string>>({});
+  const [shortAnswerResults, setShortAnswerResults] = useState<ShortAnswerResult[]>([]);
+  const [mixedMcqCorrect, setMixedMcqCorrect] = useState(0);
   const [times, setTimes] = useState<Record<string, number>>({});
   const [results, setResults] = useState<QuizSubmitResponse | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -59,6 +87,9 @@ export default function Quiz() {
   } | null>(null);
   const qStart = useRef(Date.now());
 
+  const mcqCount = isMixedModuleQuiz ? mixedQuiz!.mcq.length : quiz?.questions.length ?? 0;
+  const shortCount = mixedQuiz?.short_answer?.length ?? 0;
+
   const start = async () => {
     if (!learnerId) {
       toast('Sign in as a student to take a quiz.', 'error');
@@ -67,6 +98,26 @@ export default function Quiz() {
     setGenerating(true);
     setLoadError(null);
     try {
+      if (isMixedModuleQuiz && mixedQuiz) {
+        setQuiz({
+          quiz_id: moduleQuizId ?? `mixed-${Date.now()}`,
+          topic: decodedTopic,
+          questions: mixedQuiz.mcq.map((q) => ({
+            question_id: q.id,
+            question_text: q.question,
+            options: q.options,
+            difficulty: 'medium' as const,
+          })),
+        });
+        setIndex(0);
+        setAnswers({});
+        setShortAnswers({});
+        setShortAnswerResults([]);
+        setStep('question');
+        qStart.current = Date.now();
+        return;
+      }
+
       const data = await generateQuiz(learnerId, decodedTopic);
       if (!data.questions?.length) {
         throw new Error('No questions were generated for this topic.');
@@ -100,6 +151,8 @@ export default function Quiz() {
     if (index < quiz.questions.length - 1) {
       setIndex((i) => i + 1);
       qStart.current = Date.now();
+    } else if (isMixedModuleQuiz && shortCount > 0) {
+      setStep('short_answer');
     } else {
       setStep('review');
     }
@@ -110,6 +163,45 @@ export default function Quiz() {
     setSubmitting(true);
     setSubmitError(null);
     try {
+      if (isMixedModuleQuiz && mixedQuiz) {
+        let correct = 0;
+        mixedQuiz.mcq.forEach((q) => {
+          if (answers[q.id] === q.correct_index) correct += 1;
+        });
+        setMixedMcqCorrect(correct);
+
+        const gradingResults: ShortAnswerResult[] = [];
+        if (mixedQuiz.short_answer?.length && moduleContentItemId) {
+          const graded = await Promise.all(
+            mixedQuiz.short_answer.map(async (q) => {
+              const r = await gradeShortAnswer({
+                question: q.question,
+                model_answer: q.model_answer,
+                key_points: q.key_points,
+                student_answer: shortAnswers[q.id] || '',
+                content_item_id: moduleContentItemId,
+              });
+              return { ...r, question_id: q.id };
+            }),
+          );
+          gradingResults.push(...graded);
+        }
+        setShortAnswerResults(gradingResults);
+        setStep('results');
+
+        if (moduleSessionId) {
+          try {
+            const completion = await completeModuleSession(moduleSessionId);
+            setModuleCompleted(completion.stage === 'completed');
+            setNextModule(completion.next_module ?? null);
+          } catch {
+            toast('Quiz submitted but module completion failed to sync', 'error');
+          }
+        }
+        toast('Results ready.', 'success');
+        return;
+      }
+
       const responses = quiz.questions.map((q) => ({
         question_id: q.question_id,
         selected_option: answers[q.question_id] ?? 0,
@@ -140,7 +232,11 @@ export default function Quiz() {
       <Card className="mx-auto max-w-xl p-8 text-center">
         <Badge variant="primary">{decodedTopic}</Badge>
         <h1 className="mt-4 text-[28px] font-extrabold">Topic Quiz</h1>
-        <p className="mt-2 text-text-secondary">5 questions · ~10 minutes estimated</p>
+        <p className="mt-2 text-text-secondary">
+          {isMixedModuleQuiz
+            ? `${mcqCount} multiple choice · ${shortCount} short answer · ~10 minutes`
+            : '5 questions · ~10 minutes estimated'}
+        </p>
         {loadError && (
           <div className="mt-6 rounded-xl border border-error/30 bg-error/5 p-4 text-left">
             <p className="font-medium text-error">Failed to load quiz</p>
@@ -197,9 +293,45 @@ export default function Quiz() {
             ))}
           </div>
           <Button className="mt-6" disabled={selected === undefined} onClick={next}>
-            {index < quiz.questions.length - 1 ? 'Next' : 'Review Answers'}
+            {index < quiz.questions.length - 1 ? 'Next' : shortCount > 0 ? 'Short Answer Questions' : 'Review Answers'}
           </Button>
         </Card>
+      </div>
+    );
+  }
+
+  if (step === 'short_answer' && mixedQuiz?.short_answer?.length) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6">
+        <h2 className="text-[22px] font-bold">Short Answer Questions</h2>
+        <p className="text-text-secondary">Type your understanding — answers are AI-graded.</p>
+        {mixedQuiz.short_answer.map((q) => (
+          <Card key={q.id} className="space-y-3 p-5">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                Short Answer
+              </span>
+              <span className="text-xs text-text-secondary">Type your understanding</span>
+            </div>
+            <p className="text-sm font-medium">{q.question}</p>
+            <textarea
+              value={shortAnswers[q.id] || ''}
+              onChange={(e) => setShortAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+              rows={4}
+              placeholder="Write your answer here..."
+              className="w-full resize-none rounded-lg border border-border bg-input p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </Card>
+        ))}
+        {submitError && (
+          <div className="rounded-xl border border-error/30 bg-error/5 p-4">
+            <p className="font-medium text-error">Failed to submit quiz</p>
+            <p className="mt-1 text-[14px] text-text-secondary">{submitError}</p>
+          </div>
+        )}
+        <Button onClick={finish} disabled={submitting}>
+          {submitting ? 'Grading…' : 'Submit Quiz'}
+        </Button>
       </div>
     );
   }
@@ -227,6 +359,89 @@ export default function Quiz() {
         <Button onClick={finish} disabled={submitting}>
           {submitting ? 'Submitting…' : 'Submit'}
         </Button>
+      </div>
+    );
+  }
+
+  if (step === 'results' && isMixedModuleQuiz && mixedQuiz) {
+    const totalMcq = mixedQuiz.mcq.length;
+    const avgShort =
+      shortAnswerResults.length > 0
+        ? Math.round(shortAnswerResults.reduce((s, r) => s + r.score, 0) / shortAnswerResults.length)
+        : 0;
+
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <Card className="p-8 text-center">
+          {moduleCompleted && (
+            <p className="mb-4 font-semibold text-teal">Module complete! Your curriculum has been updated.</p>
+          )}
+          <div className="text-[48px] font-extrabold">
+            {mixedMcqCorrect}/{totalMcq}
+          </div>
+          <div className="text-text-secondary">
+            MCQ score · Short answer avg: {avgShort}/100
+          </div>
+        </Card>
+
+        <div className="space-y-3">
+          {mixedQuiz.mcq.map((q) => {
+            const selected = answers[q.id];
+            const correct = selected === q.correct_index;
+            return (
+              <Card key={q.id} className={cn('border-l-4 p-4', correct ? 'border-l-teal' : 'border-l-error')}>
+                <div className="flex items-start gap-2">
+                  {correct ? <Check className="h-5 w-5 text-teal" /> : <X className="h-5 w-5 text-error" />}
+                  <div>
+                    <div className="font-medium">{q.question}</div>
+                    {q.explanation && (
+                      <p className="mt-2 text-[14px] text-text-secondary">{q.explanation}</p>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+          {shortAnswerResults.map((result) => (
+            <Card key={result.question_id} className="space-y-2 p-4">
+              <div
+                className={cn(
+                  'text-sm font-semibold',
+                  result.score >= 70 ? 'text-teal' : 'text-amber-600',
+                )}
+              >
+                Short Answer: {result.score}/100
+              </div>
+              <p className="text-sm text-text-secondary">{result.feedback}</p>
+              {result.points_missed && result.points_missed.length > 0 && (
+                <div className="text-xs text-error">Missed: {result.points_missed.join(', ')}</div>
+              )}
+            </Card>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          {moduleCompleted && (
+            <div className="w-full rounded-xl border border-teal-200 bg-teal-50 p-4 text-center">
+              <p className="font-semibold text-teal-800">Module complete!</p>
+              {nextModule ? (
+                <Button
+                  className="mt-3"
+                  onClick={() => navigate('/student/curriculum', { state: { scrollToNext: true } })}
+                >
+                  Continue to Module {nextModule.module_number}: {nextModule.title} →
+                </Button>
+              ) : (
+                <Button className="mt-3" onClick={() => navigate('/student/curriculum')}>
+                  Back to Curriculum →
+                </Button>
+              )}
+            </div>
+          )}
+          <Link to="/student/curriculum">
+            <Button variant="ghost">Back to Curriculum</Button>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -328,9 +543,7 @@ export default function Quiz() {
               {nextModule ? (
                 <Button
                   className="mt-3"
-                  onClick={() =>
-                    navigate('/student/curriculum', { state: { scrollToNext: true } })
-                  }
+                  onClick={() => navigate('/student/curriculum', { state: { scrollToNext: true } })}
                 >
                   Continue to Module {nextModule.module_number}: {nextModule.title} →
                 </Button>
@@ -341,7 +554,18 @@ export default function Quiz() {
               )}
             </div>
           )}
-          <Button onClick={() => { setStep('start'); setQuiz(null); setResults(null); setIndex(0); setAnswers({}); setLoadError(null); setModuleCompleted(false); setNextModule(null); }}>
+          <Button
+            onClick={() => {
+              setStep('start');
+              setQuiz(null);
+              setResults(null);
+              setIndex(0);
+              setAnswers({});
+              setLoadError(null);
+              setModuleCompleted(false);
+              setNextModule(null);
+            }}
+          >
             Practice Again
           </Button>
           <Button variant="secondary" onClick={() => navigate('/student/library')}>

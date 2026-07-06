@@ -43,6 +43,21 @@ function looksLikeResourceList(text: string): boolean {
   return lines.filter((l) => /^\d+\./.test(l)).length >= 2;
 }
 
+function coerceReasons(item: Record<string, unknown>): string[] {
+  const raw = item.reasons;
+  if (Array.isArray(raw)) {
+    return raw.map((r) => String(r).trim()).filter(Boolean);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    return [raw.trim()];
+  }
+  const single = item.reason;
+  if (typeof single === 'string' && single.trim()) {
+    return [single.trim()];
+  }
+  return [];
+}
+
 function formatStructuredPayload(data: unknown): string {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return '';
 
@@ -78,15 +93,14 @@ function formatStructuredPayload(data: unknown): string {
       const title = String(item.title ?? item.topic ?? 'Resource');
       const duration = item.duration_minutes ?? item.estimated_minutes;
       const modality = item.modality ?? item.source_type;
-      const reasons = (item.reasons as string[]) ?? (item.reason ? [String(item.reason)] : []);
+      const reasons = coerceReasons(item);
       const meta: string[] = [];
       if (modality) meta.push(String(modality).replace(/_/g, ' '));
       if (duration) meta.push(`${duration} min`);
       let line = `${i + 1}. **${title}**`;
       if (meta.length) line += ` (${meta.join(', ')})`;
       parts.push(line);
-      const reason = reasons.find(Boolean);
-      if (reason) parts.push(`   - ${reason}`);
+      if (reasons.length) parts.push(`   - ${reasons.join(' · ')}`);
     });
   }
 
@@ -94,7 +108,64 @@ function formatStructuredPayload(data: unknown): string {
     parts.push(`_${String(obj.error)}_`);
   }
 
+  const studyPlan = obj.study_plan as Record<string, unknown> | undefined;
+  if (studyPlan && typeof studyPlan === 'object') {
+    const sessions = (studyPlan.sessions as Record<string, unknown>[]) ?? [];
+    if (sessions.length) {
+      parts.push('### Study Plan');
+      if (studyPlan.total_minutes) parts.push(`- **Total time:** ${studyPlan.total_minutes} minutes`);
+      for (const sess of sessions) {
+        const title = String(sess.title ?? `Session ${sess.session ?? ''}`);
+        const dur = sess.duration_minutes;
+        const objective = sess.objective;
+        let line = `- **${title}**`;
+        if (dur) line += ` (${dur} min)`;
+        parts.push(line);
+        if (objective) parts.push(`  - ${String(objective)}`);
+      }
+    }
+  }
+
+  const tasks = obj.tasks;
+  if (Array.isArray(tasks) && tasks.length) {
+    parts.push('### Tasks');
+    for (const task of tasks) {
+      if (!task || typeof task !== 'object') continue;
+      const t = task as Record<string, unknown>;
+      const title = String(t.title ?? 'Task');
+      const meta = [
+        t.priority ? String(t.priority) : null,
+        t.due_date ? `due ${t.due_date}` : null,
+        t.estimated_minutes ? `${t.estimated_minutes} min` : null,
+      ].filter(Boolean);
+      let line = `- **${title}**`;
+      if (meta.length) line += ` (${meta.join(', ')})`;
+      parts.push(line);
+    }
+  }
+
   return parts.join('\n');
+}
+
+function salvageProseSections(text: string): string {
+  const markers = [
+    '### Study Plan',
+    '### Study Session',
+    '### Tasks',
+    '**Study recommendations**',
+    '**Your knowledge snapshot**',
+  ];
+  const sections: string[] = [];
+  for (const marker of markers) {
+    const idx = text.indexOf(marker);
+    if (idx === -1) continue;
+    let chunk = text.slice(idx);
+    const fence = chunk.indexOf('```');
+    if (fence !== -1) chunk = chunk.slice(0, fence);
+    chunk = chunk.trim();
+    if (chunk && !sections.includes(chunk)) sections.push(chunk);
+  }
+  return sections.join('\n\n');
 }
 
 /** Convert raw specialist JSON in chat output to readable markdown. */
@@ -134,6 +205,9 @@ export function formatAssistantMessage(text: string): string {
     }
     return combined;
   }
+
+  const salvaged = salvageProseSections(stripped);
+  if (salvaged) return salvaged;
 
   return remainder || text;
 }

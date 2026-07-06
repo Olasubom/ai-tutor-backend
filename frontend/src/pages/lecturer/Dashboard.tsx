@@ -15,6 +15,17 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
 
+const HONORIFICS = new Set(['mr', 'mr.', 'mrs', 'mrs.', 'ms', 'ms.', 'dr', 'dr.', 'prof', 'prof.', 'engr', 'engr.']);
+
+function firstNameFrom(fullName?: string | null): string {
+  if (!fullName?.trim()) return '';
+  const parts = fullName.trim().split(/\s+/);
+  for (const part of parts) {
+    if (!HONORIFICS.has(part.toLowerCase())) return part;
+  }
+  return parts[parts.length - 1] ?? '';
+}
+
 export default function LecturerDashboard() {
   const { user } = useAuth();
   const [courseId, setCourseId] = useState('');
@@ -26,8 +37,19 @@ export default function LecturerDashboard() {
   });
 
   useEffect(() => {
-    if (profileQ.data?.name && !useAuthStore.getState().name) {
-      useAuthStore.setState({ name: profileQ.data.name });
+    const profileName = profileQ.data?.name?.trim();
+    if (!profileName) return;
+    const store = useAuthStore.getState();
+    if (store.name === profileName) return;
+    useAuthStore.setState({ name: profileName });
+    const raw = localStorage.getItem('ai_tutor_user');
+    if (raw) {
+      try {
+        const stored = JSON.parse(raw) as { name?: string };
+        localStorage.setItem('ai_tutor_user', JSON.stringify({ ...stored, name: profileName }));
+      } catch {
+        /* ignore */
+      }
     }
   }, [profileQ.data?.name]);
 
@@ -61,14 +83,20 @@ export default function LecturerDashboard() {
     };
   }, [overviewQ.data]);
 
-  const displayName =
-    profileQ.data?.name?.split(' ')[0] || user?.name?.split(' ')[0] || profileQ.data?.email?.split('@')[0] || 'Lecturer';
+  const fullName =
+    profileQ.data?.name?.trim() ||
+    user?.name?.trim() ||
+    profileQ.data?.email?.split('@')[0] ||
+    '';
+  const displayName = firstNameFrom(fullName) || 'Lecturer';
 
   return (
     <div className="space-y-6">
       <div>
         <Badge variant="muted">LECTURER PORTAL</Badge>
-        <h1 className="mt-2 text-[28px] font-extrabold tracking-tight">Welcome, {displayName}.</h1>
+        <h1 className="mt-2 text-[28px] font-extrabold tracking-tight">
+          Welcome{displayName ? `, ${displayName}` : ''}.
+        </h1>
         <p className="text-text-secondary">
           {profileQ.data?.department
             ? `${profileQ.data.department} — live analytics from enrolled students.`

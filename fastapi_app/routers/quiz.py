@@ -4,10 +4,16 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from fastapi_app.schemas.platform import QuizGenerateRequest, QuizSubmitRequest
+from fastapi_app.database import get_db
+from fastapi_app.schemas.platform import GradeShortAnswerRequest, QuizGenerateRequest, QuizSubmitRequest
 from fastapi_app.security import require_api_key
 from fastapi_app.services import quiz_service
 from fastapi_app.services import notifications_service
+from sqlalchemy.orm import Session
+
+from agency.core.tools.models import ContentItem
+from fastapi_app.services.module_session_service import _get_subject_context
+from fastapi_app.services.quiz_ai_service import grade_short_answer
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
@@ -66,3 +72,24 @@ def quiz_bkt(learner_id: str, topic: str, _: None = Depends(require_api_key)):
 @router.get("/review-due/{learner_id}")
 def review_due(learner_id: str, _: None = Depends(require_api_key)):
     return quiz_service.review_due(learner_id)
+
+
+@router.post("/grade-short-answer")
+def grade_short_answer_endpoint(
+    payload: GradeShortAnswerRequest,
+    _: None = Depends(require_api_key),
+    db: Session = Depends(get_db),
+):
+    content_item = db.get(ContentItem, payload.content_item_id)
+    subject_ctx = _get_subject_context(content_item, db) if content_item else {
+        "department": "General Studies",
+        "course_title": "",
+        "course_code": "",
+    }
+    return grade_short_answer(
+        question=payload.question,
+        model_answer=payload.model_answer,
+        key_points=payload.key_points,
+        student_answer=payload.student_answer,
+        subject_ctx=subject_ctx,
+    )

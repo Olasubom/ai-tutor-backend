@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart2, CheckSquare, Flame } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -11,9 +11,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
 import { useLearnerProfile, useKnowledge, useTasks } from '@/hooks/useStudent';
 import { getHeatmap } from '@/api/engagement';
+import { getStudyStats } from '@/api/studyStats';
 import { completeTask } from '@/api/tasks';
 import { getMasteryBarColor, getMasteryLabel, getGlobalMasteryDescriptor } from '@/lib/masteryLabels';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +28,11 @@ export default function Dashboard() {
   const heatmap = useQuery({
     queryKey: ['heatmap', learnerId, '7d'],
     queryFn: () => getHeatmap(learnerId, '7d'),
+    enabled: !!learnerId,
+  });
+  const studyStats = useQuery({
+    queryKey: ['study-stats', learnerId],
+    queryFn: () => getStudyStats(),
     enabled: !!learnerId,
   });
 
@@ -118,7 +123,14 @@ export default function Dashboard() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Learning Hours" value={String(p?.total_study_hours ?? 0)} />
+        <StatCard
+          label="Weekly Study Hours"
+          value={
+            studyStats.data
+              ? `${studyStats.data.completed_hours}h / ${studyStats.data.weekly_goal_hours || '—'}h`
+              : '—'
+          }
+        />
         <StatCard label="Modules Completed" value={String(p?.modules_completed ?? 0)} />
         <StatCard label="Current Streak" value={String(p?.current_streak ?? 0)} />
         <Card className="p-6">

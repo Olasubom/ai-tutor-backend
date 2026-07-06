@@ -69,14 +69,61 @@ def validate_upload(content_type: str, size_bytes: int) -> tuple[str, float]:
     return ALLOWED_MIME_TYPES[content_type], size_mb
 
 
-def save_material_file(contents: bytes, filename: str) -> tuple[str, str, str]:
+def save_material_file(contents: bytes, filename: str) -> tuple[str, str, str, Optional[str]]:
     upload_id = str(uuid.uuid4())
     upload_path = UPLOAD_DIR / upload_id
     upload_path.mkdir(parents=True, exist_ok=True)
     safe_filename = f"{upload_id}_{Path(filename).name}"
     file_path = upload_path / safe_filename
     file_path.write_bytes(contents)
-    return upload_id, str(file_path), safe_filename
+
+    r2_key: Optional[str] = None
+    try:
+        from fastapi_app.services.r2_storage import is_configured, upload_file as r2_upload
+
+        if is_configured():
+            r2_key = f"uploads/{upload_id}/{safe_filename}"
+            r2_upload(str(file_path), r2_key)
+    except Exception:
+        logger.exception("r2_upload_failed", extra={"upload_id": upload_id})
+
+    return upload_id, str(file_path), safe_filename, r2_key
+
+
+def resolve_r2_key_to_local(r2_key: str, cache_id: str) -> Optional[str]:
+    """Download an R2 object to a local cache path for PDF extraction."""
+    try:
+        from fastapi_app.services.r2_storage import download_file, is_configured
+
+        if not is_configured():
+            return None
+        cache_dir = UPLOAD_DIR / "_r2_cache" / cache_id
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        local_path = cache_dir / Path(r2_key).name
+        if local_path.exists():
+            return str(local_path)
+        download_file(r2_key, str(local_path))
+        return str(local_path)
+    except Exception:
+        logger.exception("r2_resolve_failed", extra={"r2_key": r2_key})
+        return None
+
+
+def resolve_material_file_path(record: dict) -> Optional[str]:
+    """Return a local path to the material, downloading from R2 if the disk copy is gone."""
+    file_path = record.get("file_path")
+    if file_path and Path(file_path).exists():
+        return file_path
+
+    r2_key = record.get("r2_key")
+    upload_id = record.get("id") or "unknown"
+    if r2_key:
+        return resolve_r2_key_to_local(r2_key, upload_id)
+
+    if file_path and Path(file_path).name:
+        return resolve_r2_key_to_local(file_path, upload_id)
+
+    return None
 
 
 def create_material_record(
@@ -98,6 +145,7 @@ def create_material_record(
     department: Optional[str],
     status: str,
     file_path: str,
+    r2_key: Optional[str] = None,
 ) -> dict:
     return {
         "id": upload_id,
@@ -118,6 +166,7 @@ def create_material_record(
         "status": status,
         "created_at": _now(),
         "file_path": file_path,
+        "r2_key": r2_key,
         "url": f"/upload/material/{upload_id}/download",
     }
 
@@ -160,6 +209,8 @@ def sync_content_item(record: dict) -> None:
                     "status": record.get("status") or "pending_review",
                     "uploaded_by": record.get("uploaded_by"),
                     "department": record.get("department"),
+                    "file_path": record.get("file_path"),
+                    "r2_key": record.get("r2_key"),
                 }
             ]
         )

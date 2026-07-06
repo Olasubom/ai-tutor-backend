@@ -19,6 +19,7 @@ import { getMe } from '@/api/auth';
 import { onboardingStep2, onboardingStep4 } from '@/api/onboarding';
 import { fetchCoursesByIds, fetchDepartments } from '@/api/courses';
 import { fetchAdminCourses } from '@/api/adminCourses';
+import { getStudyStats } from '@/api/studyStats';
 import { COURSE_LEVEL_OPTIONS } from '@/lib/courseLevel';
 import { filterCoursesBySemester, type SemesterFilter } from '@/lib/courseSemester';
 import {
@@ -85,6 +86,11 @@ export default function Settings() {
     queryKey: ['notification-prefs', learnerId],
     queryFn: () => getNotificationPreferences(learnerId),
     enabled: !!learnerId && tab === 'notifications',
+  });
+  const studyStatsQ = useQuery({
+    queryKey: ['study-stats', learnerId],
+    queryFn: () => getStudyStats(),
+    enabled: !!learnerId && tab === 'preferences',
   });
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
 
@@ -256,6 +262,23 @@ export default function Settings() {
                 <span className="text-[28px] font-extrabold text-primary">{hours} hrs/week</span>
               </div>
               <input type="range" min={1} max={40} value={hours} onChange={(e) => setHours(Number(e.target.value))} className="mt-3 w-full accent-primary" />
+              {studyStatsQ.data && studyStatsQ.data.weekly_goal_hours > 0 && (
+                <div className="mt-4">
+                  <div className="mb-1 flex justify-between text-[13px] text-text-secondary">
+                    <span>This week</span>
+                    <span>
+                      {studyStatsQ.data.completed_hours}h of {studyStatsQ.data.weekly_goal_hours}h (
+                      {studyStatsQ.data.percent}%)
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-border">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${studyStatsQ.data.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <h3 className="font-semibold">Preferred Content Type</h3>

@@ -105,6 +105,8 @@ def _migrate_content_items(db: Database) -> None:
         alters.append("ADD COLUMN extracted_text TEXT")
     if "embedding_status" not in columns:
         alters.append("ADD COLUMN embedding_status VARCHAR(32) DEFAULT 'pending'")
+    if "topics_json" not in columns:
+        alters.append("ADD COLUMN topics_json TEXT")
     if not alters:
         return
     with db.engine.begin() as conn:
@@ -133,6 +135,50 @@ def _migrate_courses(db: Database) -> None:
             conn.execute(text(f"ALTER TABLE courses {clause}"))
 
 
+def queue_missing_embeddings() -> None:
+    """
+    Called at startup. Finds approved ContentItems that have extracted_text
+    but no local FAISS index (e.g., after a Render deployment wipes the disk).
+    Rebuilds indexes in a background thread without blocking app startup.
+    """
+    import threading
+
+    from fastapi_app.database import SessionLocal
+    from fastapi_app.services.module_embedding_service import (
+        _faiss_index_path,
+        _rebuild_faiss_from_text,
+    )
+
+    def _run() -> None:
+        db = SessionLocal()
+        try:
+            items = db.scalars(
+                select(ContentItem).where(
+                    ContentItem.status == "approved",
+                    ContentItem.extracted_text.isnot(None),
+                    ContentItem.embedding_status == "embedded",
+                )
+            ).all()
+            queued = 0
+            for item in items:
+                if _faiss_index_path(item.item_id).exists():
+                    continue
+                if not item.extracted_text:
+                    continue
+                try:
+                    _rebuild_faiss_from_text(item.item_id, item.extracted_text)
+                    queued += 1
+                except Exception as exc:
+                    print(f"[STARTUP REBUILD] {item.item_id}: {exc}")
+            if queued:
+                print(f"[STARTUP] Rebuilt FAISS for {queued} module(s) after deployment.")
+        finally:
+            db.close()
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+
 def init_database() -> None:
     db = Database()
     Base.metadata.create_all(bind=db.engine)
@@ -142,6 +188,7 @@ def init_database() -> None:
     run_migrations()
     _seed_admin(db)
     _seed_defaults(db)
+    queue_missing_embeddings()
 
 
 def _seed_admin(db: Database) -> None:
