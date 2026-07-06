@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { formatResourceType, resourceTypePillClass } from '@/lib/resourceTypes';
+import { coerceReasons } from '@/utils/formatAssistantMessage';
 import { cn } from '@/lib/utils';
 import type { Recommendation } from '@/types';
 
@@ -81,6 +82,7 @@ export function RecommendationCard({ item, matchPct, className }: Recommendation
   const sourceType = (item.source_type || item.modality || '').toLowerCase();
   const typeLabel = formatResourceType(item.modality ?? item.source_type ?? 'resource');
   const isLaunchable = sourceType === 'interactive' || sourceType === 'quiz';
+  const reasons = coerceReasons(item);
 
   return (
     <Card
@@ -106,8 +108,8 @@ export function RecommendationCard({ item, matchPct, className }: Recommendation
       </span>
       <h3 className="mt-2 text-[18px] font-bold">{item.title}</h3>
       <p className="mt-2 line-clamp-2 text-[14px] text-text-secondary">{item.description}</p>
-      {(item.reason || item.reasons?.length) && (
-        <p className="mt-2 text-[12px] italic text-text-muted">{item.reason ?? item.reasons?.join(' · ')}</p>
+      {reasons.length > 0 && (
+        <p className="mt-2 text-[12px] italic text-text-muted">{reasons.join(' · ')}</p>
       )}
       <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
         <button

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import faiss  # type: ignore
 import numpy as np
 from openai import OpenAI
+from docx import Document as DocxDocument
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -374,7 +375,25 @@ def _segment_and_cache_topics(
 
 
 
+def extract_docx_text(file_path: str) -> str:
+    try:
+        doc = DocxDocument(file_path)
+        parts = [p.text for p in doc.paragraphs if p.text.strip()]
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text.strip():
+                        parts.append(cell.text)
+        return "\n\n".join(parts).strip()
+    except Exception as exc:
+        logger.warning("[DOCX EXTRACT ERROR] %s", exc)
+        return ""
+
+
 def extract_pdf_text(file_path: str) -> str:
+    suffix = Path(file_path).suffix.lower()
+    if suffix == ".docx":
+        return extract_docx_text(file_path)
     try:
         reader = PdfReader(file_path)
         text_parts: List[str] = []

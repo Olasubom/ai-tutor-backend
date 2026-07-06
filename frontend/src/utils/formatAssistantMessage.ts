@@ -43,7 +43,7 @@ function looksLikeResourceList(text: string): boolean {
   return lines.filter((l) => /^\d+\./.test(l)).length >= 2;
 }
 
-function coerceReasons(item: Record<string, unknown>): string[] {
+export function coerceReasons(item: { reason?: string; reasons?: unknown }): string[] {
   const raw = item.reasons;
   if (Array.isArray(raw)) {
     return raw.map((r) => String(r).trim()).filter(Boolean);
