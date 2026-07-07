@@ -945,7 +945,7 @@ def handle_explanation_stage(
 
     should_advance_to_tasks = (
         chunks_delivered > 0
-        and (topic_index >= total_topics or _classify_advance(message))
+        and topic_index >= total_topics
     )
     if should_advance_to_tasks:
         session.stage = "tasks"
@@ -1197,7 +1197,7 @@ def start_or_resume_session(
     topics = _topics_for_content(content_item, db)
     total_topics = max(len(topics), 1)
 
-    if chunks_delivered < 2 and session.stage not in ("completed",):
+    if session.stage == "onboarding" and chunks_delivered == 0:
         session.stage = "onboarding"
         session.explanation_progress = 0
         session_data["chunks_delivered_count"] = 0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 from typing import List
 
@@ -76,6 +77,27 @@ def generate_mcq_questions(
     return data[:count]
 
 
+def _shuffle_mcq_options(mcq_list: list) -> list:
+    shuffled = []
+    for q in mcq_list:
+        options = q.get("options", [])
+        correct_idx = q.get("correct_index", 0)
+        if not options or correct_idx >= len(options):
+            shuffled.append(q)
+            continue
+        stripped = [re.sub(r"^[A-D]\.\s*", "", opt).strip() for opt in options]
+        correct_content = stripped[correct_idx]
+        order = list(range(len(stripped)))
+        random.shuffle(order)
+        new_options = [stripped[i] for i in order]
+        new_correct_idx = new_options.index(correct_content)
+        q = dict(q)
+        q["options"] = [f"{chr(65 + i)}. {opt}" for i, opt in enumerate(new_options)]
+        q["correct_index"] = new_correct_idx
+        shuffled.append(q)
+    return shuffled
+
+
 def generate_mixed_quiz(
     subject_ctx: dict,
     content: str,
@@ -93,7 +115,10 @@ Generate {num_mcq} multiple choice questions AND {num_short_answer} short answer
 questions based ONLY on the content above.
 
 MULTIPLE CHOICE (generate {num_mcq}):
-4 options each, one correct. Nigerian-relevant scenarios where natural for this subject.
+4 options each, one correct. Nigerian-relevant scenarios where natural for
+this subject. IMPORTANT: vary which option letter (A, B, C, or D) is correct
+across the {num_mcq} questions — do not cluster correct answers on the same
+letter.
 
 SHORT ANSWER (generate {num_short_answer}):
 Require the student to TYPE their understanding.
@@ -103,7 +128,7 @@ Return ONLY valid JSON, no markdown:
   "mcq": [
     {{"id": "q1", "type": "mcq", "question": "...",
       "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-      "correct_index": 0, "explanation": "..."}}
+      "correct_index": 2, "explanation": "..."}}
   ],
   "short_answer": [
     {{"id": "sa1", "type": "short_answer", "question": "...",
@@ -114,7 +139,9 @@ Return ONLY valid JSON, no markdown:
     raw = _call_llm(prompt)
     try:
         clean = re.sub(r"```json|```", "", raw).strip()
-        return json.loads(clean)
+        parsed = json.loads(clean)
+        parsed["mcq"] = _shuffle_mcq_options(parsed.get("mcq", []))
+        return parsed
     except Exception:
         return {"mcq": [], "short_answer": []}
 

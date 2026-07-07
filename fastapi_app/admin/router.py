@@ -7,12 +7,19 @@ from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from fastapi_app.admin.models import AdminNucId, College, Course, Department
 from fastapi_app.auth.memory import init_structured_memory
 from fastapi_app.auth.models import User
+from fastapi_app.models.lecturer_dashboard import (
+    Announcement,
+    CourseEnrollment,
+    Grade,
+    LecturerQuizAttempt,
+    UserNotification,
+)
 from fastapi_app.auth.utils import get_current_user, require_role
 from fastapi_app.database import get_db
 
@@ -462,6 +469,28 @@ def list_students(
     ]
 
 
+def _purge_user_dependencies(db: Session, user: User) -> None:
+    """Remove rows that FK to users.id so account deletion can succeed."""
+    uid = user.id
+    if user.role == "student":
+        db.execute(delete(CourseEnrollment).where(CourseEnrollment.student_id == uid))
+        db.execute(delete(LecturerQuizAttempt).where(LecturerQuizAttempt.student_id == uid))
+        db.execute(delete(Grade).where(Grade.student_id == uid))
+    elif user.role == "lecturer":
+        announcement_ids = db.scalars(
+            select(Announcement.id).where(Announcement.lecturer_id == uid)
+        ).all()
+        if announcement_ids:
+            db.execute(
+                delete(UserNotification).where(UserNotification.announcement_id.in_(announcement_ids))
+            )
+            db.execute(delete(Announcement).where(Announcement.lecturer_id == uid))
+        db.execute(delete(Grade).where(Grade.lecturer_id == uid))
+        for course in db.scalars(select(Course).where(Course.lecturer_id == uid)).all():
+            course.lecturer_id = None
+    db.execute(delete(UserNotification).where(UserNotification.user_id == uid))
+
+
 @router.patch("/students/{user_id}/suspend")
 def suspend_student(
     user_id: str,
@@ -487,6 +516,7 @@ def delete_student(
         raise HTTPException(status_code=404, detail="Student not found")
     if user.id == current["user_id"]:
         raise HTTPException(status_code=403, detail="You cannot delete your own account")
+    _purge_user_dependencies(db, user)
     db.delete(user)
     db.commit()
     return {"ok": True, "message": "Student deleted"}
@@ -530,6 +560,7 @@ def delete_lecturer(
         raise HTTPException(status_code=404, detail="Lecturer not found")
     if user.id == current["user_id"]:
         raise HTTPException(status_code=403, detail="You cannot delete your own account")
+    _purge_user_dependencies(db, user)
     db.delete(user)
     db.commit()
     return {"ok": True, "message": "Lecturer deleted"}

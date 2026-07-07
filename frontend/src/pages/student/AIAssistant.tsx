@@ -97,6 +97,8 @@ interface LocationModuleSession {
   tasks?: Recommendation[];
   redirectToQuiz?: boolean;
   quizTopic?: string;
+  explanationProgress?: number;
+  totalTopics?: number;
 }
 
 function onboardingOptionsFromResponse(res: {
@@ -262,7 +264,10 @@ export default function AIAssistant() {
       }
       setAwaitingCustomText(Boolean(ms.awaitingCustomText));
       if (ms.stage === 'explanation') {
-        setExplainProgress({ current: 1, total: 1 });
+        setExplainProgress({
+          current: ms.explanationProgress ?? 1,
+          total: ms.totalTopics ?? 1,
+        });
       }
       return;
     }

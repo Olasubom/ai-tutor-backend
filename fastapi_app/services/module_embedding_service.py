@@ -85,7 +85,7 @@ def _regex_segment_topics(extracted_text: str) -> List[dict]:
     lines = normalized.split("\n")
 
     top_level_heading = re.compile(
-        r"^\s*(\d+)\.\s+([A-Z][A-Za-z0-9 ,&\-/'’]{2,90})\s*$"
+        r"^\s*(\d+)\.\s+([A-Z][A-Za-z0-9 ,&\-/'’—–:;()]{2,90})\s*$"
     )
 
     heading_line_indices: List[int] = []
@@ -149,6 +149,18 @@ CRITICAL: the "content" fields must together cover the entire document
 with no content skipped or repeated. Every sentence in the document must
 appear in exactly one section's content.
 
+IMPORTANT — PREVIEW LISTS AND ORDER:
+- If the document opens with a "Topics Covered", "Contents", "Overview", or
+  similar preview list of topic names before the real content begins, that
+  list is NOT itself teachable content — it is only a preview/table of
+  contents. Do NOT create a separate section for each line of that list.
+  Use the ACTUAL section headings and body text that follow it to build
+  your sections.
+- Return the "topics" array in the SAME ORDER the sections actually appear
+  in the document body, from beginning to end. Do not reorder sections to
+  match a preview list, a table of contents, or any other reference — use
+  only the order content appears in when read top to bottom.
+
 Return ONLY valid JSON — no markdown fences, no preamble:
 {{
   "topics": [
@@ -167,10 +179,9 @@ Return ONLY valid JSON — no markdown fences, no preamble:
         return []
 
     valid = [t for t in topics if t.get("title") and t.get("content", "").strip()]
-
     if not valid:
         return []
-
+    valid = _reorder_topics_by_document_position(valid, extracted_text)
     if len(valid) > 1:
         total_len = sum(len(t["content"]) for t in valid)
         first_len = len(valid[0]["content"])
@@ -183,6 +194,77 @@ Return ONLY valid JSON — no markdown fences, no preamble:
             return []
 
     return valid
+
+
+def _topic_start_position(topic: dict, source_text: str) -> int:
+    content = (topic.get("content") or "").strip()
+    if not content:
+        return len(source_text)
+    probe = content[:60]
+    idx = source_text.find(probe)
+    if idx == -1:
+        idx = source_text.find(content[:20])
+    return idx if idx != -1 else len(source_text)
+
+
+def _reorder_topics_by_document_position(topics: List[dict], source_text: str) -> List[dict]:
+    """Re-sort topics to match their actual order of appearance in the
+    source document. LLM-returned array order is not reliable, especially
+    when the document contains a preview/table-of-contents list."""
+    return sorted(topics, key=lambda t: _topic_start_position(t, source_text))
+
+
+_PREVIEW_MARKER = re.compile(r"(?i)(topics covered|table of contents|\bcontents\b|overview)")
+_BOILERPLATE_END = re.compile(r"(?i)(these lecture notes|prepared exclusively|intended to supplement)")
+_TOP_LEVEL_HEADING = re.compile(r"^\s*(\d+)\.\s+([A-Z][A-Za-z0-9 ,&\-/'’—–:;()]{2,90})\s*$")
+_MIN_SECTION_BODY_CHARS = 200
+
+
+def _find_teachable_body_start(source_text: str) -> int:
+    """Char index where teachable body begins — after preview/TOC + disclaimer."""
+    preview = _PREVIEW_MARKER.search(source_text)
+    if not preview:
+        return 0
+
+    search_from = preview.start()
+    after_preview = source_text[preview.start() :]
+    boilerplate = _BOILERPLATE_END.search(after_preview)
+    if boilerplate:
+        bp_end = preview.start() + boilerplate.end()
+        next_break = source_text.find("\n\n", bp_end)
+        search_from = next_break + 2 if next_break != -1 else bp_end
+
+    normalized = source_text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    heading_indices: List[int] = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped and len(stripped) <= 100 and _TOP_LEVEL_HEADING.match(stripped):
+            char_pos = sum(len(lines[j]) + 1 for j in range(i))
+            if char_pos >= search_from:
+                heading_indices.append(i)
+
+    for idx, start in enumerate(heading_indices):
+        end = heading_indices[idx + 1] if idx + 1 < len(heading_indices) else len(lines)
+        content = "\n".join(lines[start + 1 : end]).strip()
+        if len(content) >= _MIN_SECTION_BODY_CHARS:
+            return sum(len(lines[j]) + 1 for j in range(start))
+
+    return search_from
+
+
+def _filter_preview_list_topics(topics: List[dict], source_text: str) -> List[dict]:
+    """Drop topics whose headings sit in the preview/TOC block before real body text."""
+    body_start = _find_teachable_body_start(source_text)
+    if body_start <= 0:
+        return topics
+    filtered = [t for t in topics if _topic_start_position(t, source_text) >= body_start]
+    return filtered if len(filtered) >= 2 else topics
+
+
+def _finalize_segmented_topics(topics: List[dict], source_text: str) -> List[dict]:
+    topics = _filter_preview_list_topics(topics, source_text)
+    return _reorder_topics_by_document_position(topics, source_text)
 
 
 def segment_module_topics(
@@ -223,6 +305,9 @@ def segment_module_topics(
     if not topics and extracted_text.strip():
         topics = [{"title": module_title, "content": extracted_text.strip()}]
         method = "single_block_fallback"
+
+    if len(topics) >= 2:
+        topics = _finalize_segmented_topics(topics, extracted_text)
 
     return {
         "topics": topics,

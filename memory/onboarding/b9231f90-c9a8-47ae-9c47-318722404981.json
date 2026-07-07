@@ -1,0 +1,15 @@
+{
+  "completed_steps": [
+    3
+  ],
+  "data": {
+    "step3": {
+      "assessments": [
+        {
+          "topic": "Law of Contract I",
+          "proficiency": "familiar"
+        }
+      ]
+    }
+  }
+}

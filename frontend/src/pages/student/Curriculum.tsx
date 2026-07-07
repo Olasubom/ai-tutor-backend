@@ -122,6 +122,8 @@ export default function Curriculum() {
             tasks: res.tasks,
             redirectToQuiz: res.redirect_to_quiz,
             quizTopic: res.topic,
+            explanationProgress: res.explanation_progress,
+            totalTopics: res.total_topics,
           },
         },
       });

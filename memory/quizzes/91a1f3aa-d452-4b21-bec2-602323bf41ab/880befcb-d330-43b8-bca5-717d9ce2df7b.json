@@ -1,0 +1,68 @@
+{
+  "quiz_id": "880befcb-d330-43b8-bca5-717d9ce2df7b",
+  "learner_id": "91a1f3aa-d452-4b21-bec2-602323bf41ab",
+  "topic": "CIL201 Module2 Offer and Acceptance",
+  "created_at": "2026-07-07T08:39:53.574968+00:00",
+  "questions": [
+    {
+      "question_id": "q_1",
+      "question_text": "What is the primary purpose of an offer in contract law?",
+      "options": [
+        "To invite negotiations",
+        "To create a binding agreement",
+        "To express willingness to enter a contract",
+        "To reject previous offers"
+      ],
+      "difficulty": "easy",
+      "correct_option": 2
+    },
+    {
+      "question_id": "q_2",
+      "question_text": "Which of the following is NOT a requirement for a valid offer?",
+      "options": [
+        "Clear terms",
+        "Communication to the offeree",
+        "Acceptance by the offeree",
+        "Intent to create legal obligations"
+      ],
+      "difficulty": "medium",
+      "correct_option": 2
+    },
+    {
+      "question_id": "q_3",
+      "question_text": "In which case is an offer considered terminated?",
+      "options": [
+        "When the offeree accepts the offer",
+        "When the offeror revokes the offer before acceptance",
+        "When the offeree makes a counter-offer",
+        "When the offeror dies after acceptance"
+      ],
+      "difficulty": "medium",
+      "correct_option": 1
+    },
+    {
+      "question_id": "q_4",
+      "question_text": "What distinguishes an offer from an invitation to treat?",
+      "options": [
+        "An offer requires acceptance to form a contract",
+        "An invitation to treat can be accepted",
+        "An offer is always in writing",
+        "An invitation to treat is a binding promise"
+      ],
+      "difficulty": "easy",
+      "correct_option": 0
+    },
+    {
+      "question_id": "q_5",
+      "question_text": "Which of the following is an example of an invitation to treat?",
+      "options": [
+        "A store displaying goods with price tags",
+        "A signed contract",
+        "A verbal agreement to sell a car",
+        "A handshake deal"
+      ],
+      "difficulty": "medium",
+      "correct_option": 0
+    }
+  ]
+}
