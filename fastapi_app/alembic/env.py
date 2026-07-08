@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv(_ROOT / "agency" / ".env", override=True)
 
-from agency.core.tools.database import Base  # noqa: E402
+from agency.core.tools.database import Base, normalize_database_url  # noqa: E402
 import agency.core.tools.models  # noqa: F401, E402
 import fastapi_app.admin.models  # noqa: F401, E402
 import fastapi_app.auth.models  # noqa: F401, E402
@@ -27,7 +27,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-db_url = os.getenv("DATABASE_URL") or "sqlite:///./ai_tutor.db"
+db_url = normalize_database_url(os.getenv("DATABASE_URL") or "sqlite:///./ai_tutor.db")
 config.set_main_option("sqlalchemy.url", db_url)
 
 # other values from the config, defined by the needs of env.py,

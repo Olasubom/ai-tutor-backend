@@ -21,6 +21,7 @@ agency/data/memory/
 agency/data/vector_store/
 uploads/
 memory/uploads/
+memory/
 
 # Node / frontend
 frontend/node_modules/
