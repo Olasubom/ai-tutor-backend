@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { recordEngagement } from '@/api/engagement';
 import { getMe } from '@/api/auth';
-import { BookOpen, Bot, HelpCircle, LayoutDashboard, Library, LogOut, Settings } from 'lucide-react';
+import { BookOpen, Bot, HelpCircle, LayoutDashboard, Library, ListChecks, LogOut, Settings } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/authStore';
 
 const nav = [
   { to: '/student/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { to: '/student/tasks', label: 'Tasks', icon: <ListChecks className="h-4 w-4" /> },
   { to: '/student/curriculum', label: 'Curriculum', icon: <BookOpen className="h-4 w-4" /> },
   { to: '/student/library', label: 'Recommendations', icon: <Library className="h-4 w-4" /> },
   { to: '/student/ai-assistant', label: 'AI Assistant', icon: <Bot className="h-4 w-4" /> },
@@ -55,7 +56,7 @@ export function AppShell() {
           { to: '#logout', label: 'Log out', icon: <LogOut className="h-4 w-4" />, onClick: handleLogout },
         ]}
       />
-      <div className="ml-[260px]">
+      <div className="lg:ml-[260px]">
         <Header onNewSession={handleNewSession} />
         <main className="p-6">
           <Outlet />

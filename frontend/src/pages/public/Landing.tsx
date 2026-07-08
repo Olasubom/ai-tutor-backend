@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, Brain, Check, GraduationCap, Sparkles, Target, TrendingUp, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { ThemeToggle } from '@/components/ui/Toggle';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { TiltCard } from '@/components/ui/TiltCard';
 
@@ -24,27 +23,26 @@ const masteryRows = [
 export default function Landing() {
   return (
     <div className="min-h-screen bg-page">
-      <nav className="flex items-center justify-between border-b border-border bg-header px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white">
+      <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-header px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-white">
             <GraduationCap className="h-5 w-5" />
           </div>
-          <div>
-            <div className="font-bold text-text-primary">AITutor</div>
-            <div className="text-[12px] text-text-muted">Learning Intelligence</div>
+          <div className="min-w-0">
+            <div className="truncate font-bold text-text-primary">AITutor</div>
+            <div className="truncate text-[12px] text-text-muted">Learning Intelligence</div>
           </div>
         </div>
         <div className="hidden gap-8 text-[14px] text-text-secondary md:flex">
           <a href="#features">Features</a>
           <a href="#how">How it Works</a>
         </div>
-        <div className="flex items-center gap-3">
-          <ThemeToggle />
-          <Link to="/login" className="text-[14px] font-medium text-text-secondary">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <Link to="/login" className="whitespace-nowrap text-[13px] font-medium text-text-secondary sm:text-[14px]">
             Log In
           </Link>
           <Link to="/register">
-            <Button>Start Learning Free</Button>
+            <Button className="whitespace-nowrap px-3 text-[13px] sm:px-4 sm:text-[14px]">Start Learning Free</Button>
           </Link>
         </div>
       </nav>

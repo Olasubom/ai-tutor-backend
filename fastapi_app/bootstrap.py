@@ -12,9 +12,9 @@ _ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(_ROOT / "agency" / ".env", override=False)
 load_dotenv(_ROOT / ".env", override=False)
 
-from sqlalchemy import select
-
-from sqlalchemy import inspect, text
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import inspect, select, text
 
 from agency.core.tools.database import Base, Database
 from agency.core.tools.models import ContentItem, ModuleProgress, ModuleSession  # noqa: F401
@@ -35,6 +35,38 @@ from fastapi_app.auth.models import User  # noqa: F401
 from fastapi_app.auth.utils import hash_password
 
 logger = logging.getLogger(__name__)
+
+
+def _alembic_config() -> Config:
+    return Config(str(_ROOT / "alembic.ini"))
+
+
+def stamp_if_needed(db: Database) -> None:
+    """
+    If this DB has no alembic_version table yet, it was built directly
+    by create_all() + the guarded ALTER TABLE checks, not by Alembic.
+    Stamp it at head instead of letting Alembic try to replay DDL that
+    already exists, which fails silently. This does not execute any
+    schema-changing DDL — it only records migration state.
+    """
+    inspector = inspect(db.engine)
+    if "alembic_version" not in inspector.get_table_names():
+        cfg = _alembic_config()
+        db_url = str(db.engine.url.render_as_string(hide_password=False))
+        cfg.set_main_option("sqlalchemy.url", db_url)
+        import dotenv
+
+        _original_load_dotenv = dotenv.load_dotenv
+
+        def _preserve_database_url(*args, **kwargs):
+            kwargs["override"] = False
+            return _original_load_dotenv(*args, **kwargs)
+
+        dotenv.load_dotenv = _preserve_database_url
+        try:
+            command.stamp(cfg, "head")
+        finally:
+            dotenv.load_dotenv = _original_load_dotenv
 
 
 def run_migrations() -> None:
@@ -185,6 +217,7 @@ def init_database() -> None:
     _migrate_content_items(db)
     _migrate_courses(db)
     _clean_duplicate_courses(db)
+    stamp_if_needed(db)
     run_migrations()
     _seed_admin(db)
     _seed_defaults(db)

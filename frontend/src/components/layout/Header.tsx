@@ -1,9 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, Search } from 'lucide-react';
-import { ThemeToggle } from '@/components/ui/Toggle';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
+import { MenuButton } from '@/components/layout/MenuButton';
 import { useAuth } from '@/hooks/useAuth';
 import { getNotifications } from '@/api/notifications';
 
@@ -26,21 +26,21 @@ export function Header({ showSession = true, onNewSession }: HeaderProps) {
   const unread = (notifications ?? []).filter((n) => !n.is_read).length;
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-header px-6 backdrop-blur">
-      <div className="relative w-full max-w-md">
+    <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 border-b border-border bg-header px-3 backdrop-blur sm:gap-3 sm:px-4 lg:px-6">
+      <MenuButton />
+      <div className="relative min-w-0 flex-1 max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
         <input
           placeholder="Search curriculum..."
           className="w-full rounded-full border border-border bg-input py-2 pl-10 pr-4 text-[14px] focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
-      <div className="hidden items-center gap-6 px-6 text-[14px] text-text-secondary md:flex">
+      <div className="hidden items-center gap-6 text-[14px] text-text-secondary md:flex">
         <button type="button" className="hover:text-primary" onClick={() => navigate('/student/curriculum')}>
           My Courses
         </button>
       </div>
-      <div className="flex items-center gap-3">
-        <ThemeToggle />
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         {user?.role === 'student' && (
           <button
             type="button"
@@ -57,11 +57,13 @@ export function Header({ showSession = true, onNewSession }: HeaderProps) {
         )}
         {showSession && (
           <Button
+            className="px-2 text-[13px] sm:px-4 sm:text-[14px]"
             onClick={() => {
               onNewSession?.();
             }}
           >
-            New Session
+            <span className="hidden sm:inline">New Session</span>
+            <span className="sm:hidden">New</span>
           </Button>
         )}
         <button type="button" onClick={() => navigate('/student/settings')} className="rounded-full">

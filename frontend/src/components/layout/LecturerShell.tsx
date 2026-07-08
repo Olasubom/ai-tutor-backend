@@ -63,7 +63,7 @@ export function LecturerShell() {
           { to: '#logout', label: 'Log out', icon: <LogOut className="h-4 w-4" />, onClick: handleLogout },
         ]}
       />
-      <div className="ml-[260px]">
+      <div className="lg:ml-[260px]">
         <Header showSession={false} />
         <main className="p-6">
           <Outlet />

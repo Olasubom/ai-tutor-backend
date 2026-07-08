@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, RefreshCw } from 'lucide-react';
+import { Clock, RefreshCw, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
-import { completeTask, createTask, getLearnerTasks } from '@/api/tasks';
+import { completeTask, createTask, deleteTask, getLearnerTasks } from '@/api/tasks';
 import { getReviewDue } from '@/api/quiz';
 import { useToastStore } from '@/components/ui/Toast';
 import { ClipboardList } from 'lucide-react';
@@ -41,6 +41,14 @@ export default function Tasks() {
       qc.invalidateQueries({ queryKey: ['tasks', learnerId] });
       setNewText('');
       toast('Task added', 'success');
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (taskId: string) => deleteTask(learnerId, taskId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks', learnerId] });
+      toast('Task deleted', 'success');
     },
   });
 
@@ -108,14 +116,22 @@ export default function Tasks() {
               <Card key={id} className="flex items-center gap-4 p-4">
                 <input
                   type="checkbox"
-                  className="h-5 w-5 rounded border-border"
+                  className="h-5 w-5 shrink-0 rounded border-border"
                   onChange={() => complete.mutate(id)}
                 />
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <div className="font-medium">{t.title ?? t.text}</div>
                   {t.course && <div className="text-[13px] text-text-muted">{t.course}</div>}
                 </div>
                 {t.priority && <Badge variant={t.priority === 'urgent' ? 'error' : 'muted'}>{t.priority}</Badge>}
+                <button
+                  type="button"
+                  aria-label="Delete task"
+                  className="shrink-0 rounded-lg p-2 text-text-muted hover:bg-card-hover hover:text-error"
+                  onClick={() => remove.mutate(id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </Card>
             );
           })
